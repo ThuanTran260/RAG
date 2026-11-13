@@ -21,3 +21,6 @@ node_modules/
 Thumbs.db
 .vscode/
 .idea/
+
+# Decree 145/2020 raw files: third-party copy, waiting for its own ingestion plan
+data/raw/nghi-dinh-145-2020-*

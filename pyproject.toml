@@ -1,0 +1,19 @@
+[project]
+name = "labor-law-rag"
+version = "0.1.0"
+description = "RAG assistant for Vietnamese labour law"
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2,<3",
+    "python-docx==1.2.0",
+]
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100

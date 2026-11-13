@@ -1,0 +1,7 @@
+# Generated data keeps LF newlines on every platform so builds stay byte-identical
+*.jsonl text eol=lf
+
+# Source documents are binary: their checksums are pinned, never convert them
+*.docx binary
+*.doc binary
+*.pdf binary
