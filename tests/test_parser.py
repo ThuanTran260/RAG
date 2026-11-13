@@ -60,3 +60,61 @@ def test_section_is_reset_by_a_new_chapter():
     ])
     assert (arts[0].section, arts[0].section_title) == (1, "GIAO KẾT")
     assert (arts[1].chapter, arts[1].section, arts[1].section_title) == ("II", None, None)
+
+
+import pytest
+
+from ingestion.parser import ParseError
+
+
+def test_quoted_article_inside_an_amendment_is_not_a_new_article():
+    arts = parse_articles(CH1 + [
+        "Điều 1. Sửa đổi, bổ sung một số điều của các luật có liên quan",
+        "1. Sửa đổi, bổ sung một số điều của Luật Bảo hiểm xã hội:",
+        "a) Sửa đổi, bổ sung Điều 54 như sau:",
+        "“Điều 54. Điều kiện hưởng lương hưu",
+        "1. Người lao động được hưởng lương hưu.",
+        "2. Điều kiện khác theo quy định của Chính phủ.”;",
+        "2. Sửa đổi, bổ sung Điều 32 của Bộ luật Tố tụng dân sự.",
+        "Điều 2. Hiệu lực thi hành",
+        "Bộ luật này có hiệu lực.",
+    ])
+    assert [a.number for a in arts] == [1, 2]
+    assert [c.label for c in arts[0].clauses] == ["1", "2"]
+    assert "“Điều 54. Điều kiện hưởng lương hưu" in arts[0].clauses[0].text
+    assert arts[0].clauses[0].text.endswith("2. Điều kiện khác theo quy định của Chính phủ.”;")
+
+
+def test_quote_closed_in_the_same_paragraph_does_not_open_a_block():
+    arts = parse_articles(CH1 + [
+        "Điều 1. Thử",
+        "1. Sửa đổi khoản 1 như sau:",
+        "“1. Người lao động hưởng lương hưu.”.",
+        "2. Khoản hai.",
+    ])
+    assert [c.label for c in arts[0].clauses] == ["1", "2"]
+
+
+def test_gap_in_article_numbers_raises():
+    with pytest.raises(ParseError, match="expected Điều 2, found Điều 3"):
+        parse_articles(CH1 + ["Điều 1. A", "Nội dung.", "Điều 3. C", "Nội dung."])
+
+
+def test_first_article_must_be_number_one():
+    with pytest.raises(ParseError, match="expected Điều 1, found Điều 5"):
+        parse_articles(CH1 + ["Điều 5. A", "Nội dung."])
+
+
+def test_duplicate_clause_label_raises():
+    with pytest.raises(ParseError, match="duplicate clause 1 in Điều 1"):
+        parse_articles(CH1 + ["Điều 1. A", "1. Một.", "1. Lại một."])
+
+
+def test_unterminated_quote_raises():
+    with pytest.raises(ParseError, match="unterminated quote in Điều 1"):
+        parse_articles(CH1 + ["Điều 1. A", "1. Sửa như sau:", "“Điều 9. Trích dở"])
+
+
+def test_text_without_any_article_raises():
+    with pytest.raises(ParseError, match="no articles found"):
+        parse_articles(["LUẬT CÔNG AN NHÂN DÂN", "Nội dung không có cấu trúc."])
