@@ -21,7 +21,9 @@ def test_replaces_nbsp_and_collapses_whitespace(make_docx):
 
 
 def test_skips_empty_paragraphs_and_table_content(make_docx):
-    path = make_docx(["Điều 220. Hiệu lực thi hành", "", "   "], table_cells=("VĂN PHÒNG QUỐC HỘI",))
+    path = make_docx(
+        ["Điều 220. Hiệu lực thi hành", "", "   "], table_cells=("VĂN PHÒNG QUỐC HỘI",)
+    )
     assert load_paragraphs(path) == ["Điều 220. Hiệu lực thi hành"]
 
 

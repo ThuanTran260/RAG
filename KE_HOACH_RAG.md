@@ -64,13 +64,13 @@
 | Nguồn | Mô tả | Lưu ý |
 |---|---|---|
 | **vbpl.vn** | Cơ sở dữ liệu quốc gia về văn bản pháp luật (Bộ Tư pháp) | Nguồn chính thức, nên ưu tiên. Tải thủ công vài văn bản là đủ cho phạm vi project |
-| **`undertheseanlp/UTS_VLC`** (Hugging Face) | Bộ dữ liệu Hiến pháp, Bộ luật, Luật Việt Nam, đã có sẵn dạng text | Tiện nhất để bắt đầu: `load_dataset("undertheseanlp/UTS_VLC")` rồi lọc lấy luật cần dùng |
+| **`undertheseanlp/UTS_VLC`** (Hugging Face) | Bộ dữ liệu Hiến pháp, Bộ luật, Luật Việt Nam | **Không dùng cho Bộ luật Lao động**: kiểm tra ngày 12/11/2026, bản ghi `45/2019/QH14` (split `2026`) chứa nhầm nội dung văn bản khác |
 | **`th1nhng0/vietnamese-legal-documents`** (Hugging Face) | Hơn 500 nghìn văn bản (luật, nghị định, thông tư...) | Dùng khi muốn mở rộng sang nghị định, thông tư. Đọc kỹ license trên trang dataset |
 | thuvienphapluat.vn | Kho văn bản lớn, có tình trạng hiệu lực | Trang thương mại: chỉ dùng để đối chiếu, không crawl hàng loạt |
 
 **Văn bản đề xuất cho bản đầu tiên:**
 
-1. Bộ luật Lao động 2019 (45/2019/QH14)
+1. Bộ luật Lao động 2019 (45/2019/QH14), dùng bản hợp nhất 18/VBHN-VPQH ngày 12/02/2026 tải từ Công báo (xem `data/raw/SOURCES.md`)
 2. Nghị định 145/2020/NĐ-CP (hướng dẫn về điều kiện lao động và quan hệ lao động)
 3. Mở rộng sau: Luật Bảo hiểm xã hội, Luật Việc làm
 
@@ -92,10 +92,10 @@ Trước khi nạp, **kiểm tra tình trạng hiệu lực** của từng văn 
 ## 5. Lộ trình 8 tuần
 
 ### Tuần 1 — Dữ liệu và chunking
-- [ ] Tạo repo GitHub, cấu trúc thư mục, môi trường Python
-- [ ] Tải Bộ luật Lao động, làm sạch (bỏ header/footer, chuẩn hóa Unicode về NFC)
-- [ ] Viết parser tách theo cấu trúc Chương → Mục → Điều → Khoản
-- [ ] Mỗi chunk lưu metadata: tên văn bản, số hiệu, chương, số điều, tên điều, số khoản
+- [x] Tạo repo GitHub, cấu trúc thư mục, môi trường Python
+- [x] Tải Bộ luật Lao động, làm sạch (bỏ header/footer, chuẩn hóa Unicode về NFC)
+- [x] Viết parser tách theo cấu trúc Chương → Mục → Điều → Khoản
+- [x] Mỗi chunk lưu metadata: tên văn bản, số hiệu, chương, số điều, tên điều, số khoản
 - **Kết quả:** file `chunks.jsonl`, in thử 20 chunk để kiểm tra bằng mắt
 
 ### Tuần 2 — RAG cơ bản (baseline)

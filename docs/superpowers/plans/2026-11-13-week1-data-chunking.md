@@ -898,7 +898,7 @@ Kết thúc file bằng `if __name__ == "__main__": raise SystemExit(main())`. D
 - [ ] **Step 4: Chạy toàn bộ test**
 
 Run: `uv run pytest -v`
-Expected: 38 passed, 0 failed (Task 1: 2, Task 2: 7, Task 3–4: 13, Task 5: 6, Task 6: 10)
+Expected: 41 passed, 0 failed (Task 1: 2, Task 2: 7, Task 3–4: 13, Task 5: 6, Task 6: 10)
 
 Nếu một số chuẩn trong `test_counts_match_the_reference_numbers` lệch, đừng sửa số trong test. Hãy tìm quy tắc nào của loader hoặc parser đang khác với mô tả ở Task 2–4.
 

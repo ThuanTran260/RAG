@@ -51,16 +51,20 @@ def parse_articles(paragraphs: list[str]) -> list[Article]:
         nonlocal in_article, intro_parts, clauses
         if in_article:
             assert chapter is not None
-            articles.append(Article(
-                number=art_number,
-                title=art_title,
-                chapter=chapter,
-                chapter_title=chapter_title,
-                section=section,
-                section_title=section_title,
-                intro="\n".join(intro_parts),
-                clauses=[Clause(label=label, text="\n".join(parts)) for label, parts in clauses],
-            ))
+            articles.append(
+                Article(
+                    number=art_number,
+                    title=art_title,
+                    chapter=chapter,
+                    chapter_title=chapter_title,
+                    section=section,
+                    section_title=section_title,
+                    intro="\n".join(intro_parts),
+                    clauses=[
+                        Clause(label=label, text="\n".join(parts)) for label, parts in clauses
+                    ],
+                )
+            )
         in_article = False
         intro_parts = []
         clauses = []
