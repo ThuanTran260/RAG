@@ -89,7 +89,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.sample > 0:
         lines = (args.out / "chunks.jsonl").read_text(encoding="utf-8").splitlines()
         chunks = [Chunk.model_validate_json(line) for line in lines]
-        for chunk in random.Random(args.seed).sample(chunks, args.sample):
+        for chunk in random.Random(args.seed).sample(chunks, min(args.sample, len(chunks))):
             print(f"--- {chunk.id}")
             print(chunk.context_text)
     return 0

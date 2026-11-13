@@ -128,3 +128,14 @@ def test_cli_survives_a_legacy_console_encoding(tmp_path):
     assert "chunks: 676" in out
     assert "char_len min/median/max: 11 / 189.5 / 4512" in out
     assert out.count("--- 45-2019-QH14:d") == 3
+
+
+def test_cli_sample_larger_than_chunk_count_is_clamped(tmp_path):
+    result = subprocess.run(
+        [sys.executable, "-m", "ingestion.build", "--out", str(tmp_path), "--sample", "1000"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr.decode("utf-8", "replace")
+    assert result.stdout.decode("utf-8").count("--- 45-2019-QH14:d") == 676
