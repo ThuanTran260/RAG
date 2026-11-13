@@ -6,6 +6,9 @@ from zipfile import BadZipFile
 from docx import Document
 from docx.opc.exceptions import PackageNotFoundError
 
+# A point label glued to its text once the footnote digit between them is dropped, e.g. "a)Thành".
+RE_POINT_NO_SPACE = re.compile(r"^([a-zđ]\))(?=\S)")
+
 
 def load_paragraphs(path: Path) -> list[str]:
     """Read a .docx into a list of cleaned, non-empty body paragraphs."""
@@ -25,6 +28,7 @@ def load_paragraphs(path: Path) -> list[str]:
         text = "".join(run.text for run in paragraph.runs if not run.font.superscript)
         text = unicodedata.normalize("NFC", text)
         text = re.sub(r"\s+", " ", text.replace("\u00a0", " ")).strip()
+        text = RE_POINT_NO_SPACE.sub(r"\1 ", text)
         if text:
             paragraphs.append(text)
     return paragraphs

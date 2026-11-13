@@ -27,7 +27,7 @@ def test_counts_match_the_reference_numbers(built):
     stats, by_id, chunks, articles, _ = built
     assert (stats.articles, stats.chunks) == (220, 676)
     assert (stats.char_len_min, stats.char_len_median, stats.char_len_max) == (11, 189.5, 4512)
-    assert stats.char_len_total == 172016
+    assert stats.char_len_total == 172017
     assert len(articles) == 220
     assert len(by_id) == len(chunks) == 676
     assert sum(1 for c in chunks if c["clause"] is None) == 37
@@ -42,6 +42,7 @@ def test_footnote_digits_are_gone(built):
     )
     assert by_id["45-2019-QH14:d139:k1"]["text"].startswith("1. Lao động nữ được nghỉ thai sản")
     assert by_id["45-2019-QH14:d220:k1"]["chapter_title"] == "ĐIỀU KHOẢN THI HÀNH"
+    assert "\na) Thành lập cơ sở giáo dục nghề nghiệp" in by_id["45-2019-QH14:d59:k2"]["text"]
 
 
 def test_added_clause_8a(built):

@@ -48,3 +48,15 @@ def test_real_labour_code_paragraphs():
     assert all(unicodedata.is_normalized("NFC", p) for p in paragraphs)
     assert not any("\u00a0" in p for p in paragraphs)
     assert not any("CÔNG BÁO" in p for p in paragraphs)  # page header must not leak into the body
+
+
+def test_inserts_missing_space_after_point_label(make_docx):
+    path = make_docx(
+        [[("a)", False), ("2", True), ("Thành lập cơ sở giáo dục nghề nghiệp", False)]]
+    )
+    assert load_paragraphs(path) == ["a) Thành lập cơ sở giáo dục nghề nghiệp"]
+
+
+def test_point_label_already_followed_by_space_is_unchanged(make_docx):
+    text = "đ) Đơn phương chấm dứt hợp đồng lao động;"
+    assert load_paragraphs(make_docx([text])) == [text]

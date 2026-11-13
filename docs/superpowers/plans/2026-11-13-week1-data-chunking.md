@@ -57,7 +57,7 @@ Năm tình huống thực tế dễ gây lỗi nhất, mỗi tình huống đã 
 - 639 Khoản; 37 Điều không có khoản; tổng 676 chunk.
 - 12 Điều có lời dẫn trước khoản 1: 3, 25, 56, 58, 67, 99, 108, 120, 125, 187, 199, 205.
 - Nhãn khoản có chữ cái duy nhất: `8a` ở Điều 154.
-- Độ dài `text` của chunk: nhỏ nhất 11 (`4. Sa thải.`, khoản 4 Điều 124), trung vị 189,5, lớn nhất 4.512 (khoản 1 Điều 219), tổng 172.016 ký tự.
+- Độ dài `text` của chunk: nhỏ nhất 11 (`4. Sa thải.`, khoản 4 Điều 124), trung vị 189,5, lớn nhất 4.512 (khoản 1 Điều 219), tổng 172.017 ký tự.
 - Ba tiêu đề trải trên nhiều đoạn văn: Chương XII, Chương XVI, Mục 3 Chương XI.
 
 ## Ngoài phạm vi plan này
@@ -239,7 +239,8 @@ Quy tắc làm sạch, theo đúng thứ tự:
 2. Bỏ mọi run có `run.font.superscript` là true. File thật có đúng 5 run như vậy, đều là số chú thích dính sau dấu khoản/điểm (`3.` + `3` + ` Người…`).
 3. Nối text các run còn lại, chuẩn hóa `unicodedata.normalize("NFC", …)`.
 4. Đổi `\u00a0` thành dấu cách, gộp mọi chuỗi khoảng trắng (`\s+`) thành một dấu cách, rồi `strip()`.
-5. Bỏ đoạn rỗng.
+5. Nếu đoạn bắt đầu bằng nhãn điểm (`a)`, `đ)`) dính liền chữ phía sau (số chú thích ở giữa đã bị bỏ ở quy tắc 2), chèn một dấu cách sau nhãn: `a)Thành…` thành `a) Thành…`. Chỉ có đúng một đoạn như vậy trong file thật (Điều 59 khoản 2).
+6. Bỏ đoạn rỗng.
 
 - [ ] **Step 1: Viết fixture trong `tests/conftest.py`**
 
@@ -804,7 +805,7 @@ def test_counts_match_the_reference_numbers(built):
     stats, by_id, chunks, articles, _ = built
     assert (stats.articles, stats.chunks) == (220, 676)
     assert (stats.char_len_min, stats.char_len_median, stats.char_len_max) == (11, 189.5, 4512)
-    assert stats.char_len_total == 172016
+    assert stats.char_len_total == 172017
     assert len(articles) == 220
     assert len(by_id) == len(chunks) == 676
     assert sum(1 for c in chunks if c["clause"] is None) == 37
