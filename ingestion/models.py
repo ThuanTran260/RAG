@@ -35,3 +35,38 @@ class Article(BaseModel):
     section_title: str | None
     intro: str  # paragraphs before the first clause joined with "\n"; "" if none
     clauses: list[Clause]
+
+
+class Chunk(BaseModel):
+    id: str  # "45-2019-QH14:d35:k1", or "45-2019-QH14:d1" for an article with no clause
+    doc_id: str
+    doc_no: str
+    doc_title: str
+    source_no: str
+    chapter: str
+    chapter_title: str
+    section: int | None
+    section_title: str | None
+    article: int
+    article_title: str
+    clause: str | None
+    text: str  # verbatim text to display
+    context_text: str  # text to embed
+    char_len: int  # len(text)
+    checked_at: date
+
+
+class ArticleRecord(BaseModel):
+    id: str  # "45-2019-QH14:d35"
+    doc_id: str
+    doc_no: str
+    doc_title: str
+    source_no: str
+    chapter: str
+    chapter_title: str
+    section: int | None
+    section_title: str | None
+    article: int
+    article_title: str
+    text: str  # full article: heading line, intro, then every clause
+    checked_at: date
