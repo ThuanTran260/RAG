@@ -24,7 +24,7 @@ def load_paragraphs(path: Path) -> list[str]:
         # Superscript runs are footnote numbers glued after clause/point labels.
         text = "".join(run.text for run in paragraph.runs if not run.font.superscript)
         text = unicodedata.normalize("NFC", text)
-        text = re.sub(r"\s+", " ", text.replace(" ", " ")).strip()
+        text = re.sub(r"\s+", " ", text.replace("\u00a0", " ")).strip()
         if text:
             paragraphs.append(text)
     return paragraphs

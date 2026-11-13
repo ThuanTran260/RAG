@@ -17,7 +17,7 @@ def test_normalises_decomposed_text_to_nfc(make_docx):
 
 
 def test_replaces_nbsp_and_collapses_whitespace(make_docx):
-    assert load_paragraphs(make_docx(["a) Làm  việc;\t "])) == ["a) Làm việc;"]
+    assert load_paragraphs(make_docx(["a)\u00a0Làm  việc;\t "])) == ["a) Làm việc;"]
 
 
 def test_skips_empty_paragraphs_and_table_content(make_docx):
@@ -44,5 +44,5 @@ def test_real_labour_code_paragraphs():
     assert paragraphs[10:13] == ["Chương I", "NHỮNG QUY ĐỊNH CHUNG", "Điều 1. Phạm vi điều chỉnh"]
     assert paragraphs[-1].startswith("3. Chế độ lao động đối với cán bộ, công chức")
     assert all(unicodedata.is_normalized("NFC", p) for p in paragraphs)
-    assert not any(" " in p for p in paragraphs)
+    assert not any("\u00a0" in p for p in paragraphs)
     assert not any("CÔNG BÁO" in p for p in paragraphs)  # page header must not leak into the body
