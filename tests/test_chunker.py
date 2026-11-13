@@ -4,12 +4,12 @@ from ingestion.models import Article, Clause
 
 
 def article(**overrides):
-    base = dict(
-        number=35, title="Quyền đơn phương chấm dứt hợp đồng lao động của người lao động",
-        chapter="III", chapter_title="HỢP ĐỒNG LAO ĐỘNG",
-        section=3, section_title="CHẤM DỨT HỢP ĐỒNG LAO ĐỘNG",
-        intro="", clauses=[Clause(label="1", text="1. Người lao động có quyền.\na) Ít nhất 45 ngày;")],
-    )
+    base = {
+        "number": 35, "title": "Quyền đơn phương chấm dứt hợp đồng lao động của người lao động",
+        "chapter": "III", "chapter_title": "HỢP ĐỒNG LAO ĐỘNG",
+        "section": 3, "section_title": "CHẤM DỨT HỢP ĐỒNG LAO ĐỘNG",
+        "intro": "", "clauses": [Clause(label="1", text="1. Người lao động có quyền.\na) Ít nhất 45 ngày;")],
+    }
     return Article(**(base | overrides))
 
 
