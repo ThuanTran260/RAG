@@ -118,3 +118,26 @@ def test_unterminated_quote_raises():
 def test_text_without_any_article_raises():
     with pytest.raises(ParseError, match="no articles found"):
         parse_articles(["LUẬT CÔNG AN NHÂN DÂN", "Nội dung không có cấu trúc."])
+
+
+def test_clause_number_jump_raises():
+    # A paragraph that merely starts with a quoted term opens a block and swallows clauses 2-3.
+    with pytest.raises(ParseError, match="clause 4 out of order in Điều 1"):
+        parse_articles(CH1 + [
+            "Điều 1. Giải thích",
+            "1. Khoản một.",
+            "“Người lao động” là người làm việc.x",
+            "2. Khoản hai.",
+            "3. Gọi là “bên”.",
+            "4. Khoản bốn.",
+        ])
+
+
+def test_clause_number_going_backwards_raises():
+    with pytest.raises(ParseError, match="clause 2a out of order in Điều 1"):
+        parse_articles(CH1 + ["Điều 1. A", "1. Một.", "2. Hai.", "3. Ba.", "2a. Hai a."])
+
+
+def test_lettered_clauses_after_their_number_are_in_order():
+    arts = parse_articles(CH1 + ["Điều 1. A", "1. Một.", "1a. Một a.", "1b. Một b.", "2. Hai."])
+    assert [c.label for c in arts[0].clauses] == ["1", "1a", "1b", "2"]

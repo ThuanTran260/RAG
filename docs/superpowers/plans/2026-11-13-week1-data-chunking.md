@@ -496,6 +496,7 @@ Quy tắc bổ sung:
    - không có Điều nào: thông báo `no articles found`;
    - số Điều không liên tục từ 1: thông báo `expected Điều {n}, found Điều {m}`;
    - một Điều có hai khoản trùng nhãn: thông báo `duplicate clause {label} in Điều {n}`;
+   - số khoản trong một Điều không tăng dần (nhảy số hoặc lùi số): thông báo `clause {label} out of order in Điều {n}`;
    - hết văn bản mà khối trích dẫn chưa đóng: thông báo `unterminated quote in Điều {n}`.
 
 - [ ] **Step 1: Thêm test thất bại vào cuối `tests/test_parser.py`**

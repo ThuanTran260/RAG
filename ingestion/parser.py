@@ -134,3 +134,8 @@ def _validate(articles: list[Article]) -> None:
             if clause.label in seen:
                 raise ParseError(f"duplicate clause {clause.label} in Điều {article.number}")
             seen.add(clause.label)
+        # Clause numbers (leading digits of the label, "8a" -> 8) may repeat or grow by 1.
+        numbers = [int(re.match(r"\d+", c.label).group()) for c in article.clauses]
+        for clause, previous, current in zip(article.clauses[1:], numbers, numbers[1:]):
+            if current not in (previous, previous + 1):
+                raise ParseError(f"clause {clause.label} out of order in Điều {article.number}")
