@@ -1,0 +1,23 @@
+# Secrets: never commit real keys
+.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+
+# Local caches and vector DB storage
+.cache/
+qdrant_storage/
+
+# Frontend (web/)
+node_modules/
+.next/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
