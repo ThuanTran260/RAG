@@ -99,7 +99,7 @@ Trước khi nạp, **kiểm tra tình trạng hiệu lực** của từng văn 
 - **Kết quả:** file `chunks.jsonl`, in thử 20 chunk để kiểm tra bằng mắt
 
 ### Tuần 2 — RAG cơ bản (baseline)
-- [ ] Chạy Qdrant bằng Docker, embedding toàn bộ chunk bằng bge-m3
+- [x] Chạy Qdrant bằng Docker, embedding toàn bộ chunk bằng bge-m3
 - [ ] Viết hàm `retrieve(query, k)` và `generate(query, contexts)`
 - [ ] Prompt yêu cầu: chỉ trả lời dựa trên ngữ cảnh, ghi rõ Điều/Khoản, nói "không tìm thấy" nếu thiếu căn cứ
 - **Kết quả:** hỏi đáp chạy được trong terminal hoặc notebook
