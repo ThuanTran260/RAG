@@ -1,6 +1,8 @@
 import pytest
 from docx import Document
 
+from app.core.config import get_settings
+
 
 @pytest.fixture
 def make_docx(tmp_path):
@@ -22,3 +24,22 @@ def make_docx(tmp_path):
         return path
 
     return _make
+
+
+SETTINGS_ENV_NAMES = (
+    "QDRANT_URL",
+    "QDRANT_COLLECTION",
+    "EMBEDDING_MODEL",
+    "EMBEDDING_DEVICE",
+    "EMBEDDING_BATCH_SIZE",
+)
+
+
+@pytest.fixture(autouse=True)
+def isolated_settings_environment(monkeypatch):
+    """Keep unit tests independent of the developer's shell environment."""
+    for name in SETTINGS_ENV_NAMES:
+        monkeypatch.delenv(name, raising=False)
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
