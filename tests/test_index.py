@@ -3,7 +3,7 @@ import uuid
 import numpy as np
 import pytest
 from qdrant_client import QdrantClient
-from qdrant_client.http.exceptions import ResponseHandlingException
+from qdrant_client.http.exceptions import ResponseHandlingException, UnexpectedResponse
 
 from app.core.config import REPO_ROOT, Settings, model_key
 from app.rag.store import QdrantUnavailableError
@@ -149,6 +149,8 @@ def test_main_indexes_all_chunks(monkeypatch, client, make_fake_embedder, tmp_pa
     monkeypatch.setattr(index, "get_settings", lambda: settings)
     monkeypatch.setattr(index, "connect", lambda _settings: client)
     monkeypatch.setattr(index, "build_embedder", lambda _settings: embedder)
+    # main() closes its client, and a closed in-memory client cannot be read back.
+    monkeypatch.setattr(client, "close", lambda: None)
 
     assert index.main(["--cache-dir", str(tmp_path)]) == 0
 
@@ -208,3 +210,67 @@ def test_main_reports_a_server_failure_during_the_rebuild(
     assert "rerun: uv run python -m ingestion.index" in captured.err
     assert "Traceback" not in captured.err
     assert captured.out == ""
+
+
+def reject_with(status):
+    def reject(*args, **kwargs):
+        raise UnexpectedResponse(
+            status, "Rejected", b"RESPONSE-BODY-MARKER", {"authorization": "HEADER-MARKER"}
+        )
+
+    return reject
+
+
+@pytest.fixture
+def wired(monkeypatch, client, make_fake_embedder):
+    """Run index.main() against an in-memory Qdrant and a fake embedder."""
+    settings = Settings(_env_file=None)
+    monkeypatch.setattr(index, "get_settings", lambda: settings)
+    monkeypatch.setattr(index, "connect", lambda _settings: client)
+    monkeypatch.setattr(
+        index, "build_embedder", lambda _settings: make_fake_embedder(settings.embedding_model)
+    )
+    return client
+
+
+@pytest.mark.parametrize("phase", ["connect", "collection_exists", "upsert"])
+@pytest.mark.parametrize("status", [400, 401, 403, 404, 418, 422, 429])
+def test_main_reports_an_http_rejection(wired, monkeypatch, tmp_path, capsys, phase, status):
+    if phase == "connect":
+        monkeypatch.setattr(index, "connect", reject_with(status))
+        monkeypatch.setattr(index, "build_embedder", lambda _s: pytest.fail("model was loaded"))
+    else:
+        monkeypatch.setattr(wired, phase, reject_with(status))
+
+    assert index.main(["--cache-dir", str(tmp_path)]) == 1
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert f"HTTP {status}" in captured.err
+    assert "MARKER" not in captured.err
+    assert "Traceback" not in captured.err
+
+
+@pytest.mark.parametrize("fail", ["none", "transport", "rejection", "bug"])
+def test_main_closes_the_client_however_it_ends(wired, monkeypatch, tmp_path, fail):
+    closed = []
+    real_close = wired.close
+    monkeypatch.setattr(wired, "close", lambda: (closed.append(True), real_close()))
+    errors = {
+        "transport": ResponseHandlingException(OSError("connection reset")),
+        "rejection": UnexpectedResponse(400, "Bad Request", b"", {}),
+        "bug": RuntimeError("bug"),
+    }
+    if fail != "none":
+
+        def raise_error(*args, **kwargs):
+            raise errors[fail]
+
+        monkeypatch.setattr(wired, "upsert", raise_error)
+
+    if fail == "bug":
+        with pytest.raises(RuntimeError, match="bug"):
+            index.main(["--cache-dir", str(tmp_path)])
+    else:
+        assert index.main(["--cache-dir", str(tmp_path)]) == (0 if fail == "none" else 1)
+    assert closed == [True]

@@ -6,7 +6,7 @@ from functools import lru_cache
 from typing import Protocol
 
 import numpy as np
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from qdrant_client import QdrantClient
 
 from app.core.config import get_settings
@@ -20,7 +20,11 @@ class InvalidQueryError(ValueError):
 
 
 class CollectionNotIndexedError(RuntimeError):
-    """The Qdrant collection for the configured model does not exist yet."""
+    """The Qdrant collection for the configured model does not exist or holds no points."""
+
+
+class InvalidCollectionDataError(RuntimeError):
+    """A stored payload does not match the current Chunk schema."""
 
 
 class RetrievedChunk(BaseModel):
@@ -76,9 +80,23 @@ class Retriever:
             hits = self.client.query_points(
                 self.collection, query=vector.tolist(), limit=k, with_payload=True
             ).points
-        return [
-            RetrievedChunk(chunk=Chunk.model_validate(hit.payload), score=hit.score) for hit in hits
-        ]
+        # There are no filters or thresholds, so no hit at all means the collection has no points.
+        if not hits:
+            raise CollectionNotIndexedError(
+                f"collection {self.collection} is empty. "
+                "Fill it with: uv run python -m ingestion.index"
+            )
+        return [RetrievedChunk(chunk=self._to_chunk(hit.payload), score=hit.score) for hit in hits]
+
+    def _to_chunk(self, payload: dict | None) -> Chunk:
+        try:
+            return Chunk.model_validate(payload)
+        except ValidationError as error:
+            # Name no field value: the payload is stored data, not something to echo.
+            raise InvalidCollectionDataError(
+                f"a payload in collection {self.collection} is incompatible with the current "
+                "chunk schema. Rebuild it with: uv run python -m ingestion.index"
+            ) from error
 
 
 @lru_cache

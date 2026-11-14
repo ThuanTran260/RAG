@@ -9,11 +9,12 @@ from pathlib import Path
 import numpy as np
 from pydantic import ValidationError
 from qdrant_client import QdrantClient
+from qdrant_client.http.exceptions import UnexpectedResponse
 from qdrant_client.models import Distance, PointStruct, VectorParams
 
 from app.core.config import REPO_ROOT, get_settings
 from app.rag.embedder import build_embedder
-from app.rag.store import QdrantUnavailableError, connect, qdrant_errors
+from app.rag.store import QdrantUnavailableError, connect, qdrant_errors, rejection_message
 from ingestion.embed_cache import embed_with_cache
 from ingestion.models import Chunk
 
@@ -111,19 +112,31 @@ def main(argv: list[str] | None = None) -> int:
     except QdrantUnavailableError as error:
         print(str(error), file=sys.stderr)
         return 1
-
-    chunks = load_chunks(args.chunks)
-    embedder = build_embedder(settings)
-    vectors = embed_with_cache([chunk.context_text for chunk in chunks], embedder, args.cache_dir)
-    try:
-        count = index_chunks(chunks, vectors, client, settings.collection_name)
-    except QdrantUnavailableError as error:
-        print(str(error), file=sys.stderr)
-        print(
-            "The collection may be incomplete; rerun: uv run python -m ingestion.index",
-            file=sys.stderr,
-        )
+    except UnexpectedResponse as error:
+        print(rejection_message(error, searching=False), file=sys.stderr)
         return 1
+
+    try:
+        chunks = load_chunks(args.chunks)
+        embedder = build_embedder(settings)
+        vectors = embed_with_cache(
+            [chunk.context_text for chunk in chunks], embedder, args.cache_dir
+        )
+        try:
+            count = index_chunks(chunks, vectors, client, settings.collection_name)
+        except QdrantUnavailableError as error:
+            print(str(error), file=sys.stderr)
+            print(
+                "The collection may be incomplete; rerun: uv run python -m ingestion.index",
+                file=sys.stderr,
+            )
+            return 1
+        except UnexpectedResponse as error:
+            print(rejection_message(error, searching=False), file=sys.stderr)
+            print("The collection may be incomplete.", file=sys.stderr)
+            return 1
+    finally:
+        client.close()
 
     print(f"collection: {settings.collection_name}")
     print(f"points: {count}")

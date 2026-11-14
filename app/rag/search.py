@@ -4,9 +4,15 @@ import argparse
 import sys
 
 from pydantic import ValidationError
+from qdrant_client.http.exceptions import UnexpectedResponse
 
-from app.rag.retriever import CollectionNotIndexedError, InvalidQueryError, retrieve
-from app.rag.store import QdrantUnavailableError
+from app.rag.retriever import (
+    CollectionNotIndexedError,
+    InvalidCollectionDataError,
+    InvalidQueryError,
+    retrieve,
+)
+from app.rag.store import QdrantUnavailableError, rejection_message
 
 PREVIEW_CHARS = 160
 
@@ -22,8 +28,16 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         results = retrieve(args.query, args.k)
-    except (QdrantUnavailableError, CollectionNotIndexedError, InvalidQueryError) as error:
+    except (
+        QdrantUnavailableError,
+        CollectionNotIndexedError,
+        InvalidCollectionDataError,
+        InvalidQueryError,
+    ) as error:
         print(str(error), file=sys.stderr)
+        return 1
+    except UnexpectedResponse as error:
+        print(rejection_message(error, searching=True), file=sys.stderr)
         return 1
     except ValidationError as error:
         print(f"invalid settings: {error}", file=sys.stderr)

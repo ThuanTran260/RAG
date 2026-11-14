@@ -40,6 +40,46 @@ def qdrant_errors(url: str | None = None) -> Iterator[None]:
         raise
 
 
+INDEX_COMMAND = "uv run python -m ingestion.index"
+
+
+def rejection_message(error: UnexpectedResponse, *, searching: bool) -> str:
+    """One safe line for a Qdrant 4xx: the status and a hint, never the response content.
+
+    qdrant_errors re-raises 4xx so that callers decide; the command line tools use this to
+    report them. ``searching`` adds the index command where reindexing could be the cure.
+    """
+    status = error.status_code
+    head = (
+        "Qdrant rejected the request"
+        if status is None
+        else f"Qdrant rejected the request (HTTP {status})"
+    )
+    if status in (400, 422):
+        if searching:
+            hint = (
+                "Check that the collection matches the embedding model; "
+                f"if not, reindex with: {INDEX_COMMAND}"
+            )
+        else:
+            hint = "Check QDRANT_COLLECTION and EMBEDDING_MODEL, then rerun this command."
+    elif status in (401, 403):
+        hint = "Check the access configuration of the Qdrant server."
+    elif status == 404:
+        if searching:
+            hint = (
+                "Check that QDRANT_URL points to a Qdrant server "
+                f"and that the collection exists; create it with: {INDEX_COMMAND}"
+            )
+        else:
+            hint = "Check that QDRANT_URL points to a Qdrant server."
+    elif status == 429:
+        hint = "Retry later."
+    else:
+        hint = "Check QDRANT_URL and the Qdrant configuration."
+    return f"{head}. {hint}"
+
+
 def connect(settings: Settings) -> QdrantClient:
     """Return a client for ``settings.qdrant_url`` after proving that the server answers."""
     # qdrant-client runs its version check in a background thread, so an unreachable server

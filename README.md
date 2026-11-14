@@ -13,6 +13,7 @@ uv sync --locked
 docker compose up -d qdrant
 uv run python -m ingestion.index
 uv run python -m app.rag.search "Thử việc tối đa bao lâu?"
+uv run pytest
 uv run pytest -m model
 uv run pytest -m server
 ```
@@ -20,6 +21,7 @@ uv run pytest -m server
 - `uv run python -m ingestion.build --sample 20` ghi `data/processed/articles.jsonl` và `data/processed/chunks.jsonl`, in thống kê và 20 chunk mẫu để kiểm tra bằng mắt.
 - `uv run python -m ingestion.index` nhúng 676 chunk bằng `BAAI/bge-m3` và nạp vào Qdrant; lần chạy thật in `points: 676` và `dimension: 1024`. Chạy lại lệnh này cho cùng kết quả (embedding được cache ở `.cache/embeddings/<model_key>.npz`).
 - `uv run python -m app.rag.search "<câu hỏi>"` in 5 chunk gần nhất kèm điểm cosine.
+- Với các lỗi vận hành được xử lý, `index` và `search` in lý do lên stderr, trả mã thoát 1 và không in gì ra stdout; lỗi cấu hình hoặc lần index bị ngắt có thể có thêm dòng chi tiết. Các lỗi gặp thường: Qdrant chưa chạy, collection chưa có hoặc đang rỗng (chạy `uv run python -m ingestion.index`), dữ liệu trong collection lệch schema chunk hiện tại (index lại), Qdrant trả HTTP 4xx (kiểm tra `QDRANT_URL`, quyền truy cập, `QDRANT_COLLECTION` và `EMBEDDING_MODEL`). Lỗi lập trình không bị che và vẫn có traceback.
 - `uv run pytest` (mặc định) bỏ qua test `integration`. `uv run pytest -m model` cần model, không cần Docker. `uv run pytest -m server` cần Qdrant đang chạy, không cần model.
 - Dữ liệu Qdrant nằm trong named volume `qdrant_storage`: sau `docker compose down` (không `-v`) rồi `docker compose up -d qdrant`, collection vẫn còn 676 điểm. Không dùng `docker compose down -v` nếu muốn giữ dữ liệu.
 

@@ -11,3 +11,4 @@ _Chưa có số liệu. Baseline sẽ được đo ở Tuần 3._
 | 2026-11-15 | Task 4: nạp chunk vào Qdrant | N/A | N/A | N/A | chưa đo recall |
 | 2026-11-15 | Task 5: retrieve dense và lệnh search | N/A | N/A | N/A | chưa đo recall |
 | 2026-11-15 | Task 6: chạy thật trên Qdrant (676 điểm, kiểm tra bằng mắt 7 câu, xem README) | N/A | N/A | N/A | chưa đo recall; không phải số liệu recall |
+| 2026-11-15 | F1: báo lỗi CLI cho HTTP 4xx, payload lệch schema và collection rỗng (không đổi xếp hạng) | N/A | N/A | N/A | chưa đo recall; run_eval.py còn là placeholder, không in số liệu |

@@ -3,7 +3,8 @@ from types import SimpleNamespace
 
 import pytest
 from qdrant_client import QdrantClient
-from qdrant_client.http.exceptions import ResponseHandlingException
+from qdrant_client.http.exceptions import ResponseHandlingException, UnexpectedResponse
+from qdrant_client.models import Distance, VectorParams
 
 from app.core.config import Settings
 from app.rag import retriever as retriever_module
@@ -17,7 +18,7 @@ from app.rag.retriever import (
     retrieve,
 )
 from app.rag.store import QdrantUnavailableError
-from ingestion.index import index_chunks
+from ingestion.index import index_chunks, point_id
 
 
 class NoEmbedder:
@@ -29,6 +30,28 @@ class NoEmbedder:
 
 def fail_transport(*args, **kwargs):
     raise ResponseHandlingException(OSError("connection reset"))
+
+
+def reject_with(status):
+    def reject(*args, **kwargs):
+        raise UnexpectedResponse(
+            status, "Rejected", b"RESPONSE-BODY-MARKER", {"authorization": "HEADER-MARKER"}
+        )
+
+    return reject
+
+
+def make_payload_incompatible(client, collection, chunk):
+    """Replace one stored payload with a neutral one that is not a Chunk."""
+    client.overwrite_payload(
+        collection, {"legacy_field": "PAYLOAD-MARKER"}, points=[point_id(chunk.id)]
+    )
+
+
+def create_empty_collection(client, collection):
+    client.create_collection(
+        collection, vectors_config=VectorParams(size=8, distance=Distance.COSINE)
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -144,6 +167,30 @@ def test_a_server_failure_becomes_qdrant_unavailable(retriever, monkeypatch, met
     monkeypatch.setattr(retriever.client, method, fail_transport)
     with pytest.raises(QdrantUnavailableError):
         retriever.retrieve("thử việc")
+
+
+def test_a_payload_that_is_not_a_chunk_is_reported_without_its_content(retriever, sample_chunks):
+    target = sample_chunks[3]
+    make_payload_incompatible(retriever.client, "test", target)
+
+    with pytest.raises(retriever_module.InvalidCollectionDataError) as info:
+        retriever.retrieve(target.context_text, k=1)
+
+    message = str(info.value)
+    assert "collection test" in message
+    assert "incompatible" in message
+    assert "uv run python -m ingestion.index" in message
+    assert "PAYLOAD-MARKER" not in message
+
+
+def test_an_empty_collection_is_reported_as_not_indexed(client, fake_embedder):
+    create_empty_collection(client, "test")
+    retriever = Retriever(client, fake_embedder, "test")
+
+    with pytest.raises(CollectionNotIndexedError, match="empty") as info:
+        retriever.retrieve("thử việc")
+
+    assert "uv run python -m ingestion.index" in str(info.value)
 
 
 # --- public retrieve() and default_retriever() -----------------------------------
@@ -274,3 +321,59 @@ def test_search_cli_reports_invalid_settings(monkeypatch, capsys):
     captured = capsys.readouterr()
     assert "embedding_batch_size" in captured.err
     assert captured.out == ""
+
+
+def test_search_cli_labels_an_incompatible_payload_as_collection_data(
+    indexed, sample_chunks, capsys
+):
+    target = sample_chunks[3]
+    make_payload_incompatible(indexed.client, indexed.settings.collection_name, target)
+
+    assert search.main([target.context_text, "-k", "1"]) == 1
+
+    captured = capsys.readouterr()
+    assert "incompatible" in captured.err
+    assert "uv run python -m ingestion.index" in captured.err
+    assert "invalid settings" not in captured.err
+    assert "PAYLOAD-MARKER" not in captured.err
+    assert captured.out == ""
+
+
+def test_search_cli_reports_an_empty_collection(wired, capsys):
+    create_empty_collection(wired.client, wired.settings.collection_name)
+
+    assert search.main(["thử việc"]) == 1
+
+    captured = capsys.readouterr()
+    assert "empty" in captured.err
+    assert "uv run python -m ingestion.index" in captured.err
+    assert captured.out == ""
+
+
+@pytest.mark.parametrize("phase", ["connect", "collection_exists", "query_points"])
+@pytest.mark.parametrize("status", [400, 401, 403, 404, 418, 422, 429])
+def test_search_cli_reports_an_http_rejection(indexed, monkeypatch, capsys, phase, status):
+    if phase == "connect":
+        monkeypatch.setattr(retriever_module, "connect", reject_with(status))
+    else:
+        monkeypatch.setattr(indexed.client, phase, reject_with(status))
+
+    assert search.main(["thử việc"]) == 1
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert f"HTTP {status}" in captured.err
+    assert len(captured.err.strip().splitlines()) == 1
+    assert "MARKER" not in captured.err
+    if status in (401, 403):
+        assert "ingestion.index" not in captured.err
+
+
+@pytest.mark.parametrize("error", [RuntimeError("bug"), ValueError("bug")])
+def test_search_cli_does_not_hide_programming_errors(indexed, monkeypatch, error):
+    def bug(*args, **kwargs):
+        raise error
+
+    monkeypatch.setattr(indexed.client, "query_points", bug)
+    with pytest.raises(type(error), match="bug"):
+        search.main(["thử việc"])
