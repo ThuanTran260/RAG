@@ -93,5 +93,5 @@ def all_chunks() -> list[Chunk]:
 
 @pytest.fixture
 def sample_chunks(all_chunks) -> list[Chunk]:
-    """The first 12 real chunks (Điều 1 to Điều 3)."""
+    """The first 12 real chunks (Điều 1 to part of Điều 3, which ends mid-article)."""
     return all_chunks[:12]
