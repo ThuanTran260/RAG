@@ -170,7 +170,7 @@ Expected: đang ở `main`, HEAD là `6b23662…` (hoặc commit hậu duệ mà
 name = "labor-law-rag"
 version = "0.1.0"
 description = "RAG assistant for Vietnamese labour law"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
     "numpy==2.5.4",
     "pydantic>=2,<3",
@@ -215,7 +215,9 @@ Expected: khóa và cài xong không lỗi; `uv.lock` đổi. Lần đầu tải
 
 - [ ] **Step 3: Kiểm tra phiên bản và PyTorch nhận GPU**
 
-Run: `uv run python -c "import torch, sentence_transformers, qdrant_client, numpy; print(torch.__version__, torch.cuda.is_available(), sentence_transformers.__version__, qdrant_client.__version__, numpy.__version__)"`
+Run: `uv run python -c "import torch, sentence_transformers, numpy; from importlib.metadata import version; print(torch.__version__, torch.cuda.is_available(), sentence_transformers.__version__, version('qdrant-client'), numpy.__version__)"`
+
+(Sửa ngày 15/11/2026 khi thực thi Task 1: `requires-python` là `>=3.12` vì `numpy==2.5.4` cần Python 3.12 trở lên; `qdrant_client` không có `__version__` nên lấy phiên bản qua `importlib.metadata`.)
 
 Expected trên máy dev này (RTX 4070): `2.14.1+cu126 True 6.3.0 1.20.0 2.5.4`. Nếu in `False` hoặc thiếu đuôi `+cu126`, dừng và báo người điều phối, không đổi index. Máy không có GPU NVIDIA vẫn chạy được trên CPU (đặt `EMBEDDING_DEVICE=cpu`); đó không phải lỗi, chỉ chậm hơn.
 

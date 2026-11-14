@@ -40,7 +40,7 @@
 
 | Lớp | Lựa chọn chính | Phương án thay thế | Ghi chú |
 |---|---|---|---|
-| Ngôn ngữ | Python 3.11+ | | Dùng `uv` hoặc `venv` để quản lý môi trường |
+| Ngôn ngữ | Python 3.12+ | | Dùng `uv` hoặc `venv` để quản lý môi trường |
 | Backend API | FastAPI | | Hỗ trợ sẵn streaming (SSE) và tự sinh tài liệu API |
 | Vector DB | Qdrant (Docker) | PostgreSQL + pgvector | Qdrant hỗ trợ cả dense và sparse vector trong một collection |
 | Embedding | `BAAI/bge-m3` | `AITeamVN/Vietnamese_Embedding` (fine-tune từ bge-m3 cho tiếng Việt) | bge-m3 sinh được cả dense lẫn sparse vector; nên thử cả hai mô hình và so số liệu |
