@@ -40,7 +40,7 @@
 
 | Lớp | Lựa chọn chính | Phương án thay thế | Ghi chú |
 |---|---|---|---|
-| Ngôn ngữ | Python 3.11+ | | Dùng `uv` hoặc `venv` để quản lý môi trường |
+| Ngôn ngữ | Python 3.12+ | | Dùng `uv` hoặc `venv` để quản lý môi trường |
 | Backend API | FastAPI | | Hỗ trợ sẵn streaming (SSE) và tự sinh tài liệu API |
 | Vector DB | Qdrant (Docker) | PostgreSQL + pgvector | Qdrant hỗ trợ cả dense và sparse vector trong một collection |
 | Embedding | `BAAI/bge-m3` | `AITeamVN/Vietnamese_Embedding` (fine-tune từ bge-m3 cho tiếng Việt) | bge-m3 sinh được cả dense lẫn sparse vector; nên thử cả hai mô hình và so số liệu |
@@ -99,8 +99,9 @@ Trước khi nạp, **kiểm tra tình trạng hiệu lực** của từng văn 
 - **Kết quả:** file `chunks.jsonl`, in thử 20 chunk để kiểm tra bằng mắt
 
 ### Tuần 2 — RAG cơ bản (baseline)
-- [ ] Chạy Qdrant bằng Docker, embedding toàn bộ chunk bằng bge-m3
-- [ ] Viết hàm `retrieve(query, k)` và `generate(query, contexts)`
+- [x] Chạy Qdrant bằng Docker, embedding toàn bộ chunk bằng bge-m3
+- [x] Viết hàm `retrieve(query, k)`
+- [ ] Viết hàm `generate(query, contexts)`
 - [ ] Prompt yêu cầu: chỉ trả lời dựa trên ngữ cảnh, ghi rõ Điều/Khoản, nói "không tìm thấy" nếu thiếu căn cứ
 - **Kết quả:** hỏi đáp chạy được trong terminal hoặc notebook
 
