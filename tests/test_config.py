@@ -1,7 +1,7 @@
 import pytest
-from pydantic import ValidationError
+from pydantic import SecretStr, ValidationError
 
-from app.core.config import REPO_ROOT, Settings, model_key, model_slug
+from app.core.config import REPO_ROOT, Settings, get_settings, model_key, model_slug
 
 
 def test_defaults():
@@ -24,10 +24,9 @@ def test_environment_overrides_defaults(monkeypatch):
 
 def test_env_file_is_read_and_unknown_keys_are_ignored(tmp_path):
     env_file = tmp_path / ".env"
-    env_file.write_text("LLM_API_KEY=not-a-real-key\nQDRANT_COLLECTION=other\n", encoding="utf-8")
+    env_file.write_text("UNKNOWN_SETTING=ignored\nQDRANT_COLLECTION=other\n", encoding="utf-8")
     settings = Settings(_env_file=env_file)
     assert settings.qdrant_collection == "other"
-    assert not hasattr(settings, "llm_api_key")
 
 
 @pytest.mark.parametrize("field", ["qdrant_url", "qdrant_collection", "embedding_model"])
@@ -107,3 +106,43 @@ def test_model_key_of_a_name_without_letters_still_has_a_slug():
 
 def test_repo_root_is_the_project_directory():
     assert (REPO_ROOT / "pyproject.toml").is_file()
+
+
+def test_llm_key_is_read_as_a_secret_and_never_shown(tmp_path):
+    env_file = tmp_path / ".env"
+    env_file.write_text("LLM_API_KEY=fake-key-do-not-leak\n", encoding="utf-8")
+    settings = Settings(_env_file=env_file)
+    assert isinstance(settings.llm_api_key, SecretStr)
+    assert settings.llm_api_key.get_secret_value() == "fake-key-do-not-leak"
+    assert "fake-key-do-not-leak" not in repr(settings)
+    assert "fake-key-do-not-leak" not in str(settings)
+    assert "fake-key-do-not-leak" not in settings.model_dump_json()
+
+
+@pytest.mark.parametrize("value", ["", "   "])
+def test_blank_llm_key_means_unset(monkeypatch, value):
+    monkeypatch.setenv("LLM_API_KEY", value)
+    assert Settings(_env_file=None).llm_api_key is None
+
+
+def test_llm_defaults():
+    settings = Settings(_env_file=None)
+    assert (settings.llm_provider, settings.llm_model) == ("gemini", "gemini-3.5-flash-lite")
+    assert settings.llm_api_key is None
+
+
+@pytest.mark.parametrize("field", ["llm_provider", "llm_model"])
+@pytest.mark.parametrize("value", ["", "   "])
+def test_blank_llm_provider_and_model_are_rejected(field, value):
+    with pytest.raises(ValidationError, match=field):
+        Settings(_env_file=None, **{field: value})
+
+
+def test_llm_provider_and_model_are_stripped():
+    settings = Settings(_env_file=None, llm_provider=" gemini ", llm_model=" m-1 ")
+    assert (settings.llm_provider, settings.llm_model) == ("gemini", "m-1")
+
+
+def test_unit_tests_do_not_read_the_repo_env_file():
+    assert Settings.model_config["env_file"] is None
+    assert get_settings().llm_api_key is None

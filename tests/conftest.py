@@ -4,7 +4,8 @@ import numpy as np
 import pytest
 from docx import Document
 
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
+from app.rag.llm import LLMRequest, LLMResult
 from ingestion.documents import REPO_ROOT
 from ingestion.models import Chunk
 
@@ -37,14 +38,22 @@ SETTINGS_ENV_NAMES = (
     "EMBEDDING_MODEL",
     "EMBEDDING_DEVICE",
     "EMBEDDING_BATCH_SIZE",
+    "LLM_PROVIDER",
+    "LLM_API_KEY",
+    "LLM_MODEL",
 )
 
 
 @pytest.fixture(autouse=True)
-def isolated_settings_environment(monkeypatch):
+def isolated_settings_environment(monkeypatch, request):
     """Keep unit tests independent of the developer's shell environment."""
+    live_llm = request.node.get_closest_marker("llm") is not None
     for name in SETTINGS_ENV_NAMES:
+        if live_llm and name.startswith("LLM_"):
+            continue
         monkeypatch.delenv(name, raising=False)
+    if not live_llm:
+        monkeypatch.setitem(Settings.model_config, "env_file", None)
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
@@ -95,3 +104,47 @@ def all_chunks() -> list[Chunk]:
 def sample_chunks(all_chunks) -> list[Chunk]:
     """The first 12 real chunks (Điều 1 to part of Điều 3, which ends mid-article)."""
     return all_chunks[:12]
+
+
+@pytest.fixture
+def contexts_for(all_chunks):
+    """Build RetrievedChunk values from real chunk ids, with fake scores that decrease."""
+    from app.rag.retriever import RetrievedChunk
+
+    by_id = {chunk.id: chunk for chunk in all_chunks}
+
+    def _build(ids):
+        return [
+            RetrievedChunk(chunk=by_id[chunk_id], score=round(0.9 - 0.01 * rank, 2))
+            for rank, chunk_id in enumerate(ids)
+        ]
+
+    return _build
+
+
+class FakeLLMClient:
+    """Counts calls and records requests; replies with a canned text or raises a canned error."""
+
+    def __init__(
+        self,
+        reply: str | Exception,
+        requested_model: str = "fake-model",
+        response_model: str | None = "fake-model-resp",
+    ) -> None:
+        self.reply = reply
+        self.requested_model = requested_model
+        self.response_model = response_model
+        self.calls = 0
+        self.requests: list[LLMRequest] = []
+
+    def complete(self, request: LLMRequest) -> LLMResult:
+        self.calls += 1
+        self.requests.append(request)
+        if isinstance(self.reply, Exception):
+            raise self.reply
+        return LLMResult(self.reply, self.requested_model, self.response_model)
+
+
+@pytest.fixture
+def make_fake_llm_client():
+    return FakeLLMClient

@@ -4,7 +4,7 @@ Hỏi đáp tiếng Việt về Bộ luật Lao động 2019 (45/2019/QH14), tr�
 
 > Thông tin chỉ mang tính tham khảo, không thay thế tư vấn pháp lý.
 
-**Trạng thái:** xong Tuần 1 (dữ liệu và chunking) và nửa đầu Tuần 2 (Qdrant và truy xuất dense), chưa có phần sinh câu trả lời. Kế hoạch chi tiết xem tại [KE_HOACH_RAG.md](KE_HOACH_RAG.md).
+**Trạng thái:** xong Tuần 1 (dữ liệu và chunking) và nửa đầu Tuần 2 (Qdrant và truy xuất dense). Phần sinh câu trả lời có trích dẫn (lệnh `ask`) đã có mã và test đơn vị nhưng chưa chạy với nhà cung cấp LLM thật, chưa đo chất lượng hay độ trễ; Tuần 2 chưa được xác nhận là xong. Kế hoạch chi tiết xem tại [KE_HOACH_RAG.md](KE_HOACH_RAG.md).
 
 ## Cách chạy
 
@@ -14,6 +14,7 @@ uv run python -m ingestion.download_model
 docker compose up -d qdrant
 uv run python -m ingestion.index
 uv run python -m app.rag.search "Thử việc tối đa bao lâu?"
+uv run python -m app.rag.ask "Thử việc tối đa bao lâu?"
 uv run pytest
 uv run pytest -m model
 uv run pytest -m server
@@ -29,6 +30,42 @@ uv run pytest -m server
 - Dữ liệu Qdrant nằm trong named volume `qdrant_storage`: sau `docker compose down` (không `-v`) rồi `docker compose up -d qdrant`, collection vẫn còn 676 điểm. Không dùng `docker compose down -v` nếu muốn giữ dữ liệu.
 
 Muốn chủ động cập nhật model, chạy lại `uv run python -m ingestion.download_model`: lệnh liên hệ Hub và có thể cập nhật snapshot cache sang trọng số mới dưới cùng tên model. Sau khi đổi trọng số hoặc reset cache model rồi tải lại, xóa file vector `.cache/embeddings/<model_key>.npz` tương ứng và chạy lại `uv run python -m ingestion.index` trước khi tìm kiếm. Hệ thống chưa tự phát hiện thay đổi phiên bản trọng số; tên collection và cache vector vẫn dựa trên tên model (xem hạn chế 8).
+
+## Sinh câu trả lời (`ask`)
+
+Cấu hình LLM nằm trong `.env` (sao chép từ `.env.example`, không commit) hoặc biến môi trường:
+
+- `LLM_PROVIDER` (mặc định `gemini`, hiện chỉ hỗ trợ `gemini`).
+- `LLM_API_KEY` (không có mặc định; không commit, không ghi vào log hay brief).
+- `LLM_MODEL` (mặc định `gemini-3.5-flash-lite`).
+
+`uv run python -m app.rag.ask "<câu hỏi>" [-k N]` chạy theo thứ tự: kiểm tra câu hỏi và `k` (mặc định 5, tối đa 8), đọc cấu hình, dựng client LLM, truy xuất `k` chunk dense như `search`, rồi gọi LLM tối đa một lần (không gọi khi truy xuất không có chunk nào). Thiếu khóa thì dừng trước khi nạp model embedding hay gọi Qdrant. Vì có bước truy xuất, `ask` vẫn cần model embedding trong cache cục bộ (`uv run python -m ingestion.download_model`) và Qdrant đang chạy (`docker compose up -d qdrant`) với collection đã index.
+
+- Client: Gemini `gemini-3.5-flash-lite` qua Interactions API với `store=False`, timeout 30 giây, tối đa 4096 token đầu ra (gồm token suy nghĩ), `thinking_level` `minimal`, một request cho mỗi câu hỏi, không retry, không fallback. Chi tiết SDK chỉ nằm ở `app/rag/llm.py`.
+- Mô hình chỉ trả JSON gồm `status` (`answered` hoặc `insufficient`) và `claims` (tối đa 6 khẳng định, mỗi khẳng định tối đa 3 mã nguồn `S1`, `S2`...). Mã nguồn, nhãn Điều/Khoản, tiêu đề Điều và nguyên văn đều do hệ thống lấy từ metadata của chunk, không lấy từ văn bản mô hình viết.
+- Đầu ra khi `answered`: danh sách khẳng định kèm `[S#]`, mục `Căn cứ:` (nhãn, tiêu đề Điều, id chunk, điểm cosine, nguyên văn chunk), dòng `Cảnh báo` cho mỗi số Điều mà câu trả lời nhắc nhưng không có trong các nguồn đã truy xuất, rồi lưu ý đối chiếu và tuyên bố tham khảo. Khi `insufficient` hoặc truy xuất không có chunk, in một câu từ chối cố định.
+- Lỗi vận hành in lên stderr và trả mã thoát 1: câu hỏi hoặc `k` không hợp lệ; Qdrant hoặc model embedding không dùng được; cấu hình sai (`invalid settings: <TÊN BIẾN>...`, chỉ tên biến, không in giá trị); lỗi LLM (`LLM: ...`, thông báo đã làm sạch); phản hồi vi phạm hợp đồng (`invalid model answer: <mã>`, không in văn bản mô hình).
+- Khi chưa có khóa, lệnh `uv run python -m app.rag.ask "..."` in đúng một dòng `LLM: LLM_API_KEY is not configured` lên stderr và thoát mã 1, trước khi truy xuất (điều phối viên chạy thực tế ngày 15/11/2026).
+
+### Chính sách dữ liệu
+
+- `ask` gửi câu hỏi và nội dung các chunk đã truy xuất tới Google Gemini API.
+- Theo trang pricing ngày 15/11/2026 mà kế hoạch dựa vào, free tier có thể dùng nội dung để cải thiện sản phẩm của Google. `store=False` là một thiết lập khác và không chứng minh việc loại trừ đó.
+- Không nhập thông tin cá nhân vào câu hỏi.
+
+### Smoke test LLM thật
+
+`uv run pytest` mặc định không gọi nhà cung cấp LLM: `addopts` loại marker `llm` khỏi lần chạy không có `-m` tường minh (với `-m` tường minh, hai test vẫn được chọn nhưng bị bỏ qua nếu thiếu `RAG_LIVE_LLM=1`). Chỉ khi đặt `RAG_LIVE_LLM=1` thì `tests/test_llm_live.py` mới được phép gửi request; ngoài ra cần `LLM_API_KEY`. Mỗi lần chạy gửi tối đa 2 request (mỗi test một request, không retry) tới nhà cung cấp trả phí theo mô tả marker `llm`. PowerShell:
+
+```powershell
+$env:RAG_LIVE_LLM = "1"; uv run --locked pytest -m llm tests/test_llm_live.py -q -rs; Remove-Item Env:RAG_LIVE_LLM
+```
+
+```bash
+RAG_LIVE_LLM=1 uv run --locked pytest -m llm tests/test_llm_live.py -q -rs
+```
+
+Smoke chỉ kiểm tra hợp đồng kỹ thuật (JSON đúng schema nhỏ; kết quả `generate` trên chunk `45-2019-QH14:d1` thỏa hợp đồng nhãn và nguyên văn), không kiểm tra ý nghĩa pháp lý hay chất lượng. Lần chạy thật đầu tiên là ngày 15/11/2026 với `gemini-3.5-flash-lite` (free tier): smoke 2 test đều qua; kết quả ghi ở `eval/results.md`.
 
 ## Kết quả
 
@@ -60,7 +97,15 @@ Bản hợp nhất 18/VBHN-VPQH ngày 12/02/2026 của Bộ luật Lao động 4
 3. Khoản 1 và 2 Điều 219 chứa nguyên văn sửa đổi của luật khác, có thể gây nhiễu khi truy xuất.
 4. Chưa trích dẫn chiếu giữa các Điều và chưa lưu thông tin sửa đổi vào metadata.
 5. Truy xuất mới chỉ dùng dense vector. Câu hỏi về báo trước khi nghỉ việc xếp Điều 36 (quyền của người sử dụng lao động, điểm 0,7071) trên Điều 35 (quyền của người lao động, hạng 3, điểm 0,6800).
-6. Chưa có bước sinh câu trả lời và chưa có ngưỡng từ chối. Câu hỏi ngoài phạm vi vẫn trả về 5 kết quả, với điểm thấp hơn (0,3439 so với 0,7071–0,7740 của 6 câu trong phạm vi). Một câu ngoài phạm vi chưa đủ để đặt ngưỡng.
+6. Chưa có ngưỡng từ chối theo điểm: `ask` vẫn đưa `k` chunk vào LLM kể cả khi điểm thấp, và việc từ chối (`insufficient`) hoàn toàn dựa vào mô hình, chưa được hiệu chỉnh. Câu hỏi ngoài phạm vi vẫn trả về 5 kết quả khi truy xuất, với điểm thấp hơn (0,3439 so với 0,7071–0,7740 của 6 câu trong phạm vi). Một câu ngoài phạm vi chưa đủ để đặt ngưỡng.
 7. Máy không có GPU NVIDIA vẫn chạy được trên CPU (`EMBEDDING_DEVICE=cpu`) nhưng chậm hơn; `pyproject.toml` đang lấy PyTorch từ index `cu126`.
 8. Cache embedding chỉ đi theo tên model: đổi trọng số, revision hay cách mã hóa dưới cùng tên model thì phải xóa `.cache/embeddings/<model_key>.npz` và index lại. Chỉ chạy một tiến trình index tại một thời điểm; lần index bị ngắt giữa chừng có thể để collection thiếu điểm, chạy lại lệnh index là đủ.
 9. Cổng Qdrant chỉ mở trên `127.0.0.1`; dữ liệu nằm trong named volume `qdrant_storage`.
+10. Trích dẫn hợp lệ (mã `[S#]` có thật, nhãn lấy từ metadata) không chứng minh câu trả lời đúng hay được nguồn ủng hộ; hệ thống không kiểm tra điều đó.
+11. Cảnh báo số Điều chỉ là gợi ý đối chiếu, không phải kiểm chứng: nó so số Điều trong câu trả lời với Điều của các chunk đã truy xuất và với mọi số Điều được nhắc trong `context_text` của chúng, nên một số được nhắc trong nguồn sẽ không bị cảnh báo. Biểu thức nhận số có thể gom nhầm một số không phải số Điều vào danh sách, làm yếu cảnh báo.
+12. Nguyên văn hiển thị của chunk khoản (`text`) không gồm đoạn dẫn của Điều (đoạn nằm trước khoản đầu tiên); đoạn này chỉ nằm trong `context_text` gửi cho mô hình. Hãy mở Điều đầy đủ để đọc đủ ngữ cảnh.
+13. Chưa đo chất lượng câu trả lời hay độ trễ, chưa so sánh nhà cung cấp. Các lần chạy thật ngày 15/11/2026 (8 câu hỏi chạy tay qua `ask`, xem `eval/results.md`) chỉ là kiểm tra bằng mắt, không phải phép đo.
+14. Một khẳng định chỉ gồm các ký tự định dạng Unicode vô hình (loại Cf) vẫn được coi là có nội dung, và các ký tự này không bị lọc khỏi khẳng định; chúng không thể thêm dòng hay tiêu đề nguồn, nhưng các ký tự điều khiển hướng văn bản (bidi, ví dụ U+202E) thuộc loại này có thể làm dòng khẳng định hiển thị sai thứ tự.
+15. Khi chưa cấu hình `LLM_API_KEY`, lệnh `ask` dừng sớm với một dòng lỗi (xem phần Sinh câu trả lời); `ask` không có chế độ không cần khóa (riêng `search` vẫn chạy được mà không cần khóa).
+16. Chống chèn chỉ thị: cách đóng gói JSON và prompt "dữ liệu, không phải chỉ thị" (`app/rag/prompts.py`) chỉ giảm rủi ro, không loại bỏ. Các test chỉ kiểm cấu trúc (nội dung độc không làm vỡ JSON và được giữ nguyên từng ký tự), không khẳng định mô hình không bị lừa. Chưa đo độ bền thật trước chỉ thị nằm trong câu hỏi hoặc trong văn bản truy xuất; việc đó chỉ đo được bằng eval với mô hình thật.
+17. Văn bản lặp vô nghĩa: mô hình từng trả các khẳng định chỉ gồm một từ lặp lại (lần chạy thật ngày 15/11/2026). Hệ thống từ chối khẳng định có đơn vị 1–4 từ lặp liên tiếp từ 4 lần trở lên (không phân biệt hoa thường, bỏ dấu câu và ký hiệu ở hai đầu mỗi từ); câu trả lời như vậy kết thúc bằng `invalid model answer: degenerate_claim` và mã thoát 1. Lệnh không tự thử lại, nên hãy chạy lại lệnh. Ngưỡng 4 dựa trên toàn bộ 676 chunk (`text` và `context_text`), nơi đơn vị lặp liên tiếp dài nhất là 2 lần. Ba giới hạn: đơn vị lặp dài hơn 4 từ không bị phát hiện; lặp trải qua nhiều khẳng định khác nhau không bị phát hiện; đây chỉ là kiểm tra cấu trúc, không đánh giá khẳng định có đúng hay có được nguồn ủng hộ hay không.
