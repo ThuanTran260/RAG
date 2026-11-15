@@ -18,3 +18,4 @@ _Chưa có số liệu. Baseline sẽ được đo ở Tuần 3._
 | 2026-11-15 | Stage 2 Task 3: generate, kiểm trích dẫn | N/A | N/A | N/A | chưa đo recall |
 | 2026-11-15 | Stage 2 Task 4: lệnh ask | N/A | N/A | N/A | chưa đo recall |
 | 2026-11-15 | Stage 2 Task 5: smoke LLM có cổng và README | N/A | N/A | N/A | chưa đo recall; smoke thật chưa chạy |
+| 2026-11-15 | Stage 2: smoke LLM thật (`RAG_LIVE_LLM=1`, 2 test, 2 request, pass; requested_model và response_model đều là `gemini-3.5-flash-lite`) và 4 lần chạy `ask` bằng tay: 2 câu trong phạm vi trả lời có trích dẫn, 1 câu ngoài phạm vi bị từ chối, 1 lần câu "Thử việc tối đa bao lâu?" ra văn bản lặp vô nghĩa nhưng vẫn qua kiểm tra (chạy lại thì bình thường) | N/A | N/A | N/A | chưa đo recall; không phải số liệu recall; lỗi văn bản lặp chưa xử lý |
