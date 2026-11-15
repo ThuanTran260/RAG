@@ -103,3 +103,19 @@ def all_chunks() -> list[Chunk]:
 def sample_chunks(all_chunks) -> list[Chunk]:
     """The first 12 real chunks (Điều 1 to part of Điều 3, which ends mid-article)."""
     return all_chunks[:12]
+
+
+@pytest.fixture
+def contexts_for(all_chunks):
+    """Build RetrievedChunk values from real chunk ids, with fake scores that decrease."""
+    from app.rag.retriever import RetrievedChunk
+
+    by_id = {chunk.id: chunk for chunk in all_chunks}
+
+    def _build(ids):
+        return [
+            RetrievedChunk(chunk=by_id[chunk_id], score=round(0.9 - 0.01 * rank, 2))
+            for rank, chunk_id in enumerate(ids)
+        ]
+
+    return _build
