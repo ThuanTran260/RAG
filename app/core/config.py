@@ -5,7 +5,7 @@ import re
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field, field_validator
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -39,8 +39,13 @@ class Settings(BaseSettings):
     # None lets sentence-transformers pick the GPU when one is available.
     embedding_device: str | None = None
     embedding_batch_size: int = Field(default=16, ge=1)
+    llm_provider: str = "gemini"
+    llm_api_key: SecretStr | None = None
+    llm_model: str = "gemini-3.5-flash-lite"
 
-    @field_validator("qdrant_url", "qdrant_collection", "embedding_model")
+    @field_validator(
+        "qdrant_url", "qdrant_collection", "embedding_model", "llm_provider", "llm_model"
+    )
     @classmethod
     def _strip_and_require_text(cls, value: str) -> str:
         value = value.strip()
@@ -54,6 +59,13 @@ class Settings(BaseSettings):
         if value is None:
             return None
         return value.strip() or None
+
+    @field_validator("llm_api_key", mode="before")
+    @classmethod
+    def _blank_key_means_unset(cls, value: str | SecretStr | None) -> str | SecretStr | None:
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
     @property
     def collection_name(self) -> str:

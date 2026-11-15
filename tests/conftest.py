@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from docx import Document
 
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 from ingestion.documents import REPO_ROOT
 from ingestion.models import Chunk
 
@@ -37,14 +37,22 @@ SETTINGS_ENV_NAMES = (
     "EMBEDDING_MODEL",
     "EMBEDDING_DEVICE",
     "EMBEDDING_BATCH_SIZE",
+    "LLM_PROVIDER",
+    "LLM_API_KEY",
+    "LLM_MODEL",
 )
 
 
 @pytest.fixture(autouse=True)
-def isolated_settings_environment(monkeypatch):
+def isolated_settings_environment(monkeypatch, request):
     """Keep unit tests independent of the developer's shell environment."""
+    live_llm = request.node.get_closest_marker("llm") is not None
     for name in SETTINGS_ENV_NAMES:
+        if live_llm and name.startswith("LLM_"):
+            continue
         monkeypatch.delenv(name, raising=False)
+    if not live_llm:
+        monkeypatch.setitem(Settings.model_config, "env_file", None)
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
