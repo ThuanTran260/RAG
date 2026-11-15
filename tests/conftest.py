@@ -5,6 +5,7 @@ import pytest
 from docx import Document
 
 from app.core.config import Settings, get_settings
+from app.rag.llm import LLMRequest, LLMResult
 from ingestion.documents import REPO_ROOT
 from ingestion.models import Chunk
 
@@ -119,3 +120,31 @@ def contexts_for(all_chunks):
         ]
 
     return _build
+
+
+class FakeLLMClient:
+    """Counts calls and records requests; replies with a canned text or raises a canned error."""
+
+    def __init__(
+        self,
+        reply: str | Exception,
+        requested_model: str = "fake-model",
+        response_model: str | None = "fake-model-resp",
+    ) -> None:
+        self.reply = reply
+        self.requested_model = requested_model
+        self.response_model = response_model
+        self.calls = 0
+        self.requests: list[LLMRequest] = []
+
+    def complete(self, request: LLMRequest) -> LLMResult:
+        self.calls += 1
+        self.requests.append(request)
+        if isinstance(self.reply, Exception):
+            raise self.reply
+        return LLMResult(self.reply, self.requested_model, self.response_model)
+
+
+@pytest.fixture
+def make_fake_llm_client():
+    return FakeLLMClient
