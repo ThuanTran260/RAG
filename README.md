@@ -65,7 +65,7 @@ $env:RAG_LIVE_LLM = "1"; uv run --locked pytest -m llm tests/test_llm_live.py -q
 RAG_LIVE_LLM=1 uv run --locked pytest -m llm tests/test_llm_live.py -q -rs
 ```
 
-Smoke chỉ kiểm tra hợp đồng kỹ thuật (JSON đúng schema nhỏ; kết quả `generate` trên chunk `45-2019-QH14:d1` thỏa hợp đồng nhãn và nguyên văn), không kiểm tra ý nghĩa pháp lý hay chất lượng. Chưa có lần chạy thật nào được ghi nhận.
+Smoke chỉ kiểm tra hợp đồng kỹ thuật (JSON đúng schema nhỏ; kết quả `generate` trên chunk `45-2019-QH14:d1` thỏa hợp đồng nhãn và nguyên văn), không kiểm tra ý nghĩa pháp lý hay chất lượng. Lần chạy thật đầu tiên là ngày 15/11/2026 với `gemini-3.5-flash-lite` (free tier): smoke 2 test đều qua; kết quả ghi ở `eval/results.md`.
 
 ## Kết quả
 
@@ -104,7 +104,7 @@ Bản hợp nhất 18/VBHN-VPQH ngày 12/02/2026 của Bộ luật Lao động 4
 10. Trích dẫn hợp lệ (mã `[S#]` có thật, nhãn lấy từ metadata) không chứng minh câu trả lời đúng hay được nguồn ủng hộ; hệ thống không kiểm tra điều đó.
 11. Cảnh báo số Điều chỉ là gợi ý đối chiếu, không phải kiểm chứng: nó so số Điều trong câu trả lời với Điều của các chunk đã truy xuất và với mọi số Điều được nhắc trong `context_text` của chúng, nên một số được nhắc trong nguồn sẽ không bị cảnh báo. Biểu thức nhận số có thể gom nhầm một số không phải số Điều vào danh sách, làm yếu cảnh báo.
 12. Nguyên văn hiển thị của chunk khoản (`text`) không gồm đoạn dẫn của Điều (đoạn nằm trước khoản đầu tiên); đoạn này chỉ nằm trong `context_text` gửi cho mô hình. Hãy mở Điều đầy đủ để đọc đủ ngữ cảnh.
-13. Chưa đo chất lượng câu trả lời hay độ trễ, chưa so sánh nhà cung cấp, chưa có lần chạy thật với LLM.
+13. Chưa đo chất lượng câu trả lời hay độ trễ, chưa so sánh nhà cung cấp. Các lần chạy thật ngày 15/11/2026 (8 câu hỏi chạy tay qua `ask`, xem `eval/results.md`) chỉ là kiểm tra bằng mắt, không phải phép đo.
 14. Một khẳng định chỉ gồm các ký tự định dạng Unicode vô hình (loại Cf) vẫn được coi là có nội dung, và các ký tự này không bị lọc khỏi khẳng định; chúng không thể thêm dòng hay tiêu đề nguồn, nhưng các ký tự điều khiển hướng văn bản (bidi, ví dụ U+202E) thuộc loại này có thể làm dòng khẳng định hiển thị sai thứ tự.
 15. Khi chưa cấu hình `LLM_API_KEY`, lệnh `ask` dừng sớm với một dòng lỗi (xem phần Sinh câu trả lời); `ask` không có chế độ không cần khóa (riêng `search` vẫn chạy được mà không cần khóa).
 16. Chống chèn chỉ thị: cách đóng gói JSON và prompt "dữ liệu, không phải chỉ thị" (`app/rag/prompts.py`) chỉ giảm rủi ro, không loại bỏ. Các test chỉ kiểm cấu trúc (nội dung độc không làm vỡ JSON và được giữ nguyên từng ký tự), không khẳng định mô hình không bị lừa. Chưa đo độ bền thật trước chỉ thị nằm trong câu hỏi hoặc trong văn bản truy xuất; việc đó chỉ đo được bằng eval với mô hình thật.
