@@ -13,7 +13,7 @@ from qdrant_client.http.exceptions import UnexpectedResponse
 from qdrant_client.models import Distance, PointStruct, VectorParams
 
 from app.core.config import REPO_ROOT, get_settings
-from app.rag.embedder import build_embedder
+from app.rag.embedder import EmbeddingModelUnavailableError, build_embedder
 from app.rag.store import QdrantUnavailableError, connect, qdrant_errors, rejection_message
 from ingestion.embed_cache import embed_with_cache
 from ingestion.models import Chunk
@@ -118,7 +118,11 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         chunks = load_chunks(args.chunks)
-        embedder = build_embedder(settings)
+        try:
+            embedder = build_embedder(settings)
+        except EmbeddingModelUnavailableError as error:
+            print(str(error), file=sys.stderr)
+            return 1
         vectors = embed_with_cache(
             [chunk.context_text for chunk in chunks], embedder, args.cache_dir
         )

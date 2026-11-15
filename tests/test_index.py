@@ -6,6 +6,7 @@ from qdrant_client import QdrantClient
 from qdrant_client.http.exceptions import ResponseHandlingException, UnexpectedResponse
 
 from app.core.config import REPO_ROOT, Settings, model_key
+from app.rag.embedder import EmbeddingModelUnavailableError
 from app.rag.store import QdrantUnavailableError
 from ingestion import index
 from ingestion.index import index_chunks, load_chunks, point_id
@@ -273,4 +274,25 @@ def test_main_closes_the_client_however_it_ends(wired, monkeypatch, tmp_path, fa
             index.main(["--cache-dir", str(tmp_path)])
     else:
         assert index.main(["--cache-dir", str(tmp_path)]) == (0 if fail == "none" else 1)
+    assert closed == [True]
+
+
+def test_main_reports_a_missing_model_cache_and_closes_the_client(
+    wired, monkeypatch, tmp_path, capsys
+):
+    closed = []
+    monkeypatch.setattr(wired, "close", lambda: closed.append(True))
+
+    def unavailable(_settings):
+        raise EmbeddingModelUnavailableError(
+            "embedding model x is not in the local cache. "
+            "Download it once with: uv run python -m ingestion.download_model"
+        )
+
+    monkeypatch.setattr(index, "build_embedder", unavailable)
+    assert index.main(["--cache-dir", str(tmp_path)]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "uv run python -m ingestion.download_model" in captured.err
+    assert "Traceback" not in captured.err
     assert closed == [True]

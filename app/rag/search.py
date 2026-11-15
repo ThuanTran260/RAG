@@ -6,6 +6,7 @@ import sys
 from pydantic import ValidationError
 from qdrant_client.http.exceptions import UnexpectedResponse
 
+from app.rag.embedder import EmbeddingModelUnavailableError
 from app.rag.retriever import (
     CollectionNotIndexedError,
     InvalidCollectionDataError,
@@ -33,6 +34,7 @@ def main(argv: list[str] | None = None) -> int:
         CollectionNotIndexedError,
         InvalidCollectionDataError,
         InvalidQueryError,
+        EmbeddingModelUnavailableError,
     ) as error:
         print(str(error), file=sys.stderr)
         return 1

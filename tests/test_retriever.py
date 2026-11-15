@@ -9,6 +9,7 @@ from qdrant_client.models import Distance, VectorParams
 from app.core.config import Settings
 from app.rag import retriever as retriever_module
 from app.rag import search
+from app.rag.embedder import EmbeddingModelUnavailableError
 from app.rag.retriever import (
     CollectionNotIndexedError,
     InvalidQueryError,
@@ -377,3 +378,18 @@ def test_search_cli_does_not_hide_programming_errors(indexed, monkeypatch, error
     monkeypatch.setattr(indexed.client, "query_points", bug)
     with pytest.raises(type(error), match="bug"):
         search.main(["thử việc"])
+
+
+def test_search_cli_reports_a_missing_model_cache_without_a_traceback(indexed, monkeypatch, capsys):
+    def unavailable(_settings):
+        raise EmbeddingModelUnavailableError(
+            "embedding model x is not in the local cache. "
+            "Download it once with: uv run python -m ingestion.download_model"
+        )
+
+    monkeypatch.setattr(retriever_module, "build_embedder", unavailable)
+    assert search.main(["thử việc"]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "uv run python -m ingestion.download_model" in captured.err
+    assert "Traceback" not in captured.err
