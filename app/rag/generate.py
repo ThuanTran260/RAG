@@ -24,6 +24,8 @@ from ingestion.models import Chunk
 
 ARTICLE_MENTION = re.compile(r"\bđiều\s+(\d+(?:\s*(?:,|và|hoặc)\s*\d+)*)", re.IGNORECASE)
 MAX_CLAIM_CHARS = 800
+MAX_REPEAT_PERIOD = 4  # longest repeated unit, in words
+MIN_DEGENERATE_REPEATS = 4  # consecutive repetitions that mark a claim as degenerate
 INSUFFICIENT_TEXT = "Không tìm thấy căn cứ trong dữ liệu đã truy xuất để trả lời câu hỏi này."
 VERIFICATION_NOTICE = (
     "Lưu ý: mã nguồn [S#], nhãn Điều/Khoản và nguyên văn do hệ thống lấy từ dữ liệu đã truy xuất; "
@@ -82,6 +84,39 @@ def source_label(chunk: Chunk) -> str:
     return label
 
 
+def _claim_words(text: str) -> list[str]:
+    """Casefolded words of a normalised claim, with punctuation and symbols trimmed from each end."""
+    words = []
+    for token in text.casefold().split():
+        start, end = 0, len(token)
+        while start < end and unicodedata.category(token[start])[0] in "PS":
+            start += 1
+        while end > start and unicodedata.category(token[end - 1])[0] in "PS":
+            end -= 1
+        if start < end:
+            words.append(token[start:end])
+    return words
+
+
+def has_degenerate_repetition(text: str) -> bool:
+    """True when a unit of 1..MAX_REPEAT_PERIOD words occurs MIN_DEGENERATE_REPEATS times in a row.
+
+    Structural check only: a unit longer than MAX_REPEAT_PERIOD words, or repetition spread over
+    several claims, is not detected, and it says nothing about whether a claim is true.
+    """
+    words = _claim_words(text)
+    for period in range(1, MAX_REPEAT_PERIOD + 1):
+        span = period * MIN_DEGENERATE_REPEATS
+        for start in range(len(words) - span + 1):
+            unit = words[start : start + period]
+            if all(
+                words[start + repeat * period : start + (repeat + 1) * period] == unit
+                for repeat in range(1, MIN_DEGENERATE_REPEATS)
+            ):
+                return True
+    return False
+
+
 def _normalise_claim_text(text: str) -> str:
     """NFC, then collapse every whitespace run (line breaks included) so a claim is one line."""
     text = " ".join(unicodedata.normalize("NFC", text).split())
@@ -91,6 +126,8 @@ def _normalise_claim_text(text: str) -> str:
         raise AnswerValidationError("schema")
     if len(text) > MAX_CLAIM_CHARS:
         raise AnswerValidationError("claim_too_long")
+    if has_degenerate_repetition(text):
+        raise AnswerValidationError("degenerate_claim")
     return text
 
 

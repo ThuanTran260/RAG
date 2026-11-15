@@ -15,6 +15,7 @@ from app.rag.generate import (
     Claim,
     article_mentions,
     generate,
+    has_degenerate_repetition,
     render_result,
     source_label,
     unsupported_article_mentions,
@@ -603,3 +604,141 @@ def test_generate_module_has_no_sdk_and_does_not_call_retrieve():
     assert not any(m.split(".")[0] in {"google", "genai", "openai"} for m in modules)
     assert "retrieve" not in names
     assert "app.rag.store" not in modules
+
+
+# --- degenerate repetition ------------------------------------------------------------------
+
+# Neutral synthetic words; none of them occurs in the surrounding sentence.
+UNIT_WORDS = ["kilo", "lima", "mike", "nova", "oscar"]
+OBSERVED_WORD = "zzyzx"
+
+
+def claim_with_repeats(period: int, repeats: int) -> str:
+    unit = " ".join(UNIT_WORDS[:period])
+    return "Câu giả lập mở đầu " + " ".join([unit] * repeats) + " rồi kết thúc câu."
+
+
+def collapse(text: str) -> str:
+    """The normalisation a claim gets before the repetition check: NFC plus whitespace collapse."""
+    return " ".join(unicodedata.normalize("NFC", text).split())
+
+
+def test_no_real_chunk_text_is_flagged_as_degenerate(all_chunks):
+    flagged = [
+        (chunk.id, field)
+        for chunk in all_chunks
+        for field in ("text", "context_text")
+        if has_degenerate_repetition(collapse(getattr(chunk, field)))
+    ]
+
+    assert len(all_chunks) > 0
+    assert flagged == []
+
+
+@pytest.mark.parametrize("period", [1, 2, 3, 4])
+def test_repetition_threshold_is_three_allowed_four_rejected(period):
+    three = claim_with_repeats(period, 3)
+    four = claim_with_repeats(period, 4)
+
+    assert not has_degenerate_repetition(three)
+    assert has_degenerate_repetition(four)
+    assert validate_answer(reply((three, ["S1"])), ["S1"]).claims[0].text == three
+    with pytest.raises(AnswerValidationError) as info:
+        validate_answer(reply((four, ["S1"])), ["S1"])
+    assert info.value.code == "degenerate_claim"
+
+
+def test_a_five_word_unit_repeated_is_not_detected():
+    text = claim_with_repeats(5, 4)
+
+    assert not has_degenerate_repetition(text)
+    assert validate_answer(reply((text, ["S1"])), ["S1"]).claims[0].text == text
+
+
+def test_repetition_ignores_case_and_punctuation():
+    separated = [
+        "Mở đầu kilo, lima. Kilo; LIMA! kilo? Lima: KILO... lima kết thúc.",
+        "Mở đầu \u201ckilo\u201d, (lima), [Kilo] \u2018LIMA\u2019 kilo lima Kilo lima kết thúc.",
+        "Mở đầu kilo - kilo \u2014 KILO \u2026 Kilo kết thúc.",
+        "Mở đầu kilo + kilo = Kilo | KILO kết thúc.",
+    ]
+
+    for text in separated:
+        assert has_degenerate_repetition(text), text
+
+
+def test_repetition_is_not_confused_by_a_different_word_between_units():
+    text = "kilo lima kilo lima kilo mike kilo lima kilo lima"
+
+    assert not has_degenerate_repetition(text)
+
+
+@pytest.mark.parametrize("text", ["", "   ", "kilo", "kilo kilo kilo", "... --- ..."])
+def test_short_or_wordless_text_is_not_degenerate(text):
+    assert not has_degenerate_repetition(text)
+
+
+def degenerate_reply_body() -> str:
+    claims = [(f"Mở {OBSERVED_WORD} " + " ".join([OBSERVED_WORD] * 12), ["S1"]) for _ in range(4)]
+    return reply(*claims)
+
+
+def test_the_observed_live_reply_shape_is_rejected(contexts_for, make_fake_llm_client):
+    contexts = contexts_for([cid("d1"), cid("d2:k1")])
+    client = make_fake_llm_client(degenerate_reply_body())
+
+    with pytest.raises(AnswerValidationError) as info:
+        generate(QUERY, contexts, client)
+
+    error = info.value
+    assert error.code == "degenerate_claim"
+    assert client.calls == 1
+    assert OBSERVED_WORD not in str(error)
+    assert OBSERVED_WORD not in repr(error)
+    assert error.__cause__ is None
+    assert error.__context__ is None
+    assert OBSERVED_WORD not in "".join(traceback.format_exception(error))
+
+
+def test_one_degenerate_claim_rejects_the_whole_answer(contexts_for, make_fake_llm_client):
+    contexts = contexts_for([cid("d1"), cid("d2:k1")])
+    body = reply(
+        ("Khẳng định giả lập hợp lệ.", ["S1"]),
+        (claim_with_repeats(2, 4), ["S2"]),
+    )
+    client = make_fake_llm_client(body)
+
+    with pytest.raises(AnswerValidationError) as info:
+        generate(QUERY, contexts, client)
+
+    assert info.value.code == "degenerate_claim"
+    assert client.calls == 1
+
+
+def test_degenerate_text_in_an_insufficient_reply_is_ignored(contexts_for, make_fake_llm_client):
+    contexts = contexts_for([cid("d1")])
+    body = reply((claim_with_repeats(1, 12), ["S1"]), status="insufficient")
+
+    result, client = run(contexts, body, make_fake_llm_client)
+
+    assert client.calls == 1
+    assert result.status == "insufficient"
+    assert result.reason == "model_insufficient"
+    assert result.claims == []
+    assert render_result(result) == INSUFFICIENT_TEXT + "\n\n" + DISCLAIMER
+
+
+def test_real_clause_text_used_as_a_claim_is_accepted(
+    all_chunks, contexts_for, make_fake_llm_client
+):
+    by_id = {chunk.id: chunk for chunk in all_chunks}
+    ids = [cid("d25:k1"), cid("d35:k1")]
+    texts = [collapse(by_id[chunk_id].text) for chunk_id in ids]
+    assert all(len(text) <= 800 for text in texts)  # no prefix cut is needed for these two
+    body = reply((texts[0], ["S1"]), (texts[1], ["S2"]))
+
+    result, client = run(contexts_for(ids), body, make_fake_llm_client)
+
+    assert client.calls == 1
+    assert result.status == "answered"
+    assert [claim.text for claim in result.claims] == texts
