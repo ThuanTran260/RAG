@@ -17,3 +17,4 @@ _Chưa có số liệu. Baseline sẽ được đo ở Tuần 3._
 | 2026-11-15 | Stage 2 Task 2: prompt và schema trích dẫn | N/A | N/A | N/A | chưa đo recall |
 | 2026-11-15 | Stage 2 Task 3: generate, kiểm trích dẫn | N/A | N/A | N/A | chưa đo recall |
 | 2026-11-15 | Stage 2 Task 4: lệnh ask | N/A | N/A | N/A | chưa đo recall |
+| 2026-11-15 | Stage 2 Task 5: smoke LLM có cổng và README | N/A | N/A | N/A | chưa đo recall; smoke thật chưa chạy |
