@@ -7,7 +7,7 @@ import unicodedata
 import pytest
 
 from eval import review_questions
-from eval.questions import check_gold_ids, load_questions
+from eval.questions import QuestionFileError, check_gold_ids, load_questions
 from eval.review_questions import (
     ReviewSession,
     build_units,
@@ -222,6 +222,43 @@ def test_reject_requires_reason(make_session, paths):
     assert len(session.pending()) == 3
 
 
+@pytest.mark.parametrize("decided_in", ["accepted", "rejected"])
+def test_partly_reviewed_pair_is_refused_at_session_start(make_session, paths, decided_in):
+    # Only q001 of pair p01 was decided, e.g. because the draft was regrouped afterwards.
+    first = draft_records()[0] | {"pair_id": None, "group": "article_ref"}
+    if decided_in == "accepted":
+        paths["accepted"].write_text(json.dumps(first, ensure_ascii=False) + "\n", encoding="utf-8")
+    else:
+        row = {"id": "q001", "reason": "x", "record": first}
+        paths["rejected"].write_text(json.dumps(row, ensure_ascii=False) + "\n", encoding="utf-8")
+
+    with pytest.raises(QuestionFileError, match=r"unit p01 .*already decided: q001"):
+        make_session()
+
+
+def test_main_refuses_a_partly_reviewed_unit_with_a_one_line_message(paths, monkeypatch, capsys):
+    first = draft_records()[0] | {"pair_id": None, "group": "article_ref"}
+    paths["accepted"].write_text(json.dumps(first, ensure_ascii=False) + "\n", encoding="utf-8")
+    monkeypatch.setattr(review_questions, "run", pytest.fail)
+
+    code = main(
+        [
+            "--draft",
+            str(paths["draft"]),
+            "--accepted",
+            str(paths["accepted"]),
+            "--rejected",
+            str(paths["rejected"]),
+        ]
+    )
+
+    err = capsys.readouterr().err
+    assert code == 1
+    assert len(err.strip().splitlines()) == 1
+    assert "unit p01" in err and "q001" in err
+    assert paths["accepted"].read_text(encoding="utf-8").count("\n") == 1  # not rewritten
+
+
 def test_counts_group_accepted_questions_and_include_rejected(make_session):
     session = make_session()
     pair, article_ref, out_of_scope = session.pending()
@@ -359,6 +396,33 @@ def test_run_out_of_scope_disables_edit_and_context(make_session, paths, all_chu
     assert read_lines(paths["accepted"])[0]["gold_ids"] == []
 
 
+def test_run_edit_empty_line_cancels_and_keeps_ids(make_session, paths, all_chunks):
+    session = make_session()
+    lines, write = collector()
+
+    # "e" + empty line cancels; a whitespace-only line cancels too; "a" keeps the draft ids.
+    run(session, all_chunks, script("e", "", "e", "  ", "a", "q"), write)
+
+    output = "\n".join(lines)
+    assert output.count("edit cancelled, ids unchanged") == 2
+    assert "unknown chunk id" not in output
+    written = read_lines(paths["accepted"])
+    assert [(line["id"], line["gold_ids"]) for line in written] == [
+        ("q001", [D35K1]),
+        ("q002", [D35K1]),
+    ]
+
+
+def test_run_edit_invalid_ids_still_reprompt_after_a_cancel(make_session, paths, all_chunks):
+    session = make_session()
+    lines, write = collector()
+
+    run(session, all_chunks, script("e", "", "e", "d35:k99", "d35:k2", "a", "q"), write)
+
+    assert "unknown chunk id: 45-2019-QH14:d35:k99" in "\n".join(lines)
+    assert read_lines(paths["accepted"])[0]["gold_ids"] == [D35K2]
+
+
 def test_run_reject_asks_for_a_reason_and_skips_an_empty_one(make_session, paths, all_chunks):
     session = make_session()
     lines, write = collector()
@@ -457,7 +521,7 @@ def test_main_rejects_invalid_draft_before_review(paths, monkeypatch, capsys):
     )
 
     assert code == 1
-    assert "questions.draft.jsonl:" in capsys.readouterr().err
+    assert "questions.draft.jsonl:1:" in capsys.readouterr().err
 
 
 def test_main_rejects_unknown_gold_ids_before_review(paths, monkeypatch, capsys):
@@ -528,7 +592,18 @@ def test_main_reads_piped_stdin_as_utf8_with_bom(paths, monkeypatch):
 
     monkeypatch.setattr(review_questions, "run", fake_run)
 
-    assert main(["--draft", str(paths["draft"])]) == 0
+    code = main(
+        [
+            "--draft",
+            str(paths["draft"]),
+            "--accepted",
+            str(paths["accepted"]),
+            "--rejected",
+            str(paths["rejected"]),
+        ]
+    )
+
+    assert code == 0
     assert seen == ["q", "Không rõ ràng"]
 
 

@@ -33,6 +33,7 @@ ID_PREFIX = "45-2019-QH14:"
 TARGETS: dict[Group, int] = {"direct": 40, "paraphrase": 40, "article_ref": 10, "out_of_scope": 20}
 OUT_OF_SCOPE: Group = "out_of_scope"
 DRAFT_NAME = "eval/questions.draft.jsonl"
+EDIT_PROMPT = "gold ids (empty line cancels) > "
 PROMPT = "[a]ccept [e]dit ids [c]ontext [r]eject [q]uit > "
 
 
@@ -106,6 +107,22 @@ class ReviewSession:
             rejected_ids = _read_rejected_ids(rejected_path)
             self._done.update(rejected_ids)
             self._rejected = len(rejected_ids)
+        self._refuse_partly_reviewed_units(accepted_path, rejected_path)
+
+    def _refuse_partly_reviewed_units(self, accepted_path: Path, rejected_path: Path) -> None:
+        """A unit is written whole, so a half-decided one means the draft was regrouped.
+
+        Reviewing it again would write the decided questions twice (a duplicate id breaks
+        the accepted file), so stop and let the user fix the files first.
+        """
+        for unit in self._units:
+            decided = [q.id for q in unit.questions if q.id in self._done]
+            if decided and len(decided) < len(unit.questions):
+                raise QuestionFileError(
+                    f"unit {unit.key} is only partly reviewed (already decided: "
+                    f"{', '.join(decided)}); fix the draft or {accepted_path.name} / "
+                    f"{rejected_path.name} so the unit is whole"
+                )
 
     @property
     def total_units(self) -> int:
@@ -282,13 +299,18 @@ def _review_unit(
             write(render_articles(gold_ids, chunks))
         elif choice == "e":
             while True:
-                try:
-                    gold_ids = parse_gold_ids(read("gold ids > "), chunks)
+                text = read(EDIT_PROMPT)
+                if not text.strip():
+                    write("edit cancelled, ids unchanged")
                     break
+                try:
+                    gold_ids = parse_gold_ids(text, chunks)
                 except ValueError as error:
                     write(str(error))
-            edited = True
-            redraw = True
+                    continue
+                edited = True
+                redraw = True
+                break
         else:
             write("unknown key")
 
