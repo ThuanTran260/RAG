@@ -106,9 +106,9 @@ Trước khi nạp, **kiểm tra tình trạng hiệu lực** của từng văn 
 - **Kết quả:** hỏi đáp chạy được trong terminal hoặc notebook
 
 ### Tuần 3 — Bộ đánh giá
-- [ ] Soạn 100 câu hỏi + đáp án (điều khoản đúng)
-- [ ] Viết script tính recall@5, recall@10, MRR cho phần truy xuất
-- [ ] Đo baseline và lưu kết quả vào `eval/results.md`
+- [x] Soạn 100 câu hỏi + đáp án (điều khoản đúng)
+- [x] Viết script tính recall@5, recall@10, MRR cho phần truy xuất
+- [x] Đo baseline và lưu kết quả vào `eval/results.md`
 - **Kết quả:** con số baseline đầu tiên. Từ đây mọi thay đổi đều phải đo lại
 
 ### Tuần 4 — Hybrid search

@@ -86,6 +86,34 @@ Kết quả của `uv run python -m app.rag.search` trên Qdrant thật (collect
 | Tuổi nghỉ hưu là bao nhiêu? | `45-2019-QH14:d169:k2` | 0,7171 | Điều 169, hạng 1 |
 | Cách nấu phở bò ngon (ngoài phạm vi) | `45-2019-QH14:d93:k1` | 0,3439 | không có |
 
+## Đánh giá truy xuất
+
+```powershell
+uv run python -m eval.run_eval [--out eval/runs/<ngày>-<nhãn>.jsonl] [--label "<thay đổi>"]
+```
+
+Lệnh cần Qdrant đang chạy và model embedding trong cache cục bộ. Mỗi câu gọi `retrieve` một lần với `k = 10`; không gọi LLM.
+
+- **Bộ câu** `eval/questions.jsonl` (127 câu): 45 cặp câu trực tiếp / câu đời thường có cùng đáp án, 12 câu nêu số Điều (`article_ref`), 25 câu ngoài phạm vi. Đáp án là danh sách id chunk mức Khoản; `gold_articles` lưu riêng để mức Điều vẫn tính được khi đổi cách chunk.
+- **Hai mức đo:** mức Khoản trúng khi đúng id chunk; mức Điều trúng khi chunk thuộc Điều đáp án. Số chính là recall@5 mức Điều trên 90 câu `direct` + `paraphrase`. Câu ngoài phạm vi không tính recall, chỉ ghi điểm top-1.
+- **Cách tạo bộ câu:** bản nháp do Claude Sonnet soạn từ nguyên văn `chunks.jsonl`, không chạy truy xuất khi soạn hay duyệt. Hai vòng review nội dung và một vòng duyệt nghiệm thu do Claude Opus thực hiện theo các tiêu chí: đáp án đủ (Buckley & Voorhees, SIGIR 2004), câu trả lời được và không mơ hồ, tránh trùng từ khóa với chunk đáp án (Thakur và cộng sự, BEIR, NeurIPS 2021), câu ngoài phạm vi trông liên quan nhưng không Điều nào trả lời (Rajpurkar và cộng sự, ACL 2018), giữ đủ số câu (Voorhees & Buckley, SIGIR 2002). **Bộ câu chưa được người duyệt**; đáp án do một họ model soạn và duyệt, nên có rủi ro thiên lệch (Faggioli và cộng sự, ICTIR 2023; Panickssery và cộng sự, NeurIPS 2024).
+- **Đóng băng:** sau baseline, `eval/questions.jsonl` chỉ đổi kèm một dòng giải thích trong `eval/results.md`. `run_eval` in mã sha256 (12 ký tự đầu) của bộ câu; mỗi dòng kết quả ghi mã này.
+
+### Baseline dense (22/11/2026, bge-m3, bộ câu `577b8392afeb`)
+
+| Nhóm | n | Điều R@5 | Điều R@10 | Điều MRR@10 | Khoản R@5 | Khoản R@10 | Khoản MRR@10 |
+|---|---|---|---|---|---|---|---|
+| Số chính (direct + paraphrase) | 90 | 1,000 | 1,000 | 0,907 | 0,989 | 1,000 | 0,864 |
+| direct | 45 | 1,000 | 1,000 | 0,989 | 1,000 | 1,000 | 0,956 |
+| paraphrase | 45 | 1,000 | 1,000 | 0,826 | 0,978 | 1,000 | 0,773 |
+| article_ref | 12 | 0,833 | 0,917 | 0,775 | 0,833 | 0,917 | 0,775 |
+
+- **Chạm trần ở top 5.** Cả 90 câu có Điều đúng trong top 5, nên recall@5 không còn chỗ để Tuần 4–5 chứng minh cải thiện. Chênh lệch nằm ở hạng: Điều đúng đứng hạng 1 ở 44/45 câu trực tiếp nhưng chỉ 32/45 câu đời thường (hạng 2: 6, hạng 3: 5, hạng 4: 2; tính từ `eval/runs/2026-11-22-dense-baseline.jsonl`).
+- **Bảng cặp (mức Điều, top 5):** cả hai trúng 45, chỉ câu trực tiếp trúng 0, chỉ câu đời thường trúng 0, cả hai trượt 0.
+- **Ca Điều 35/36 vẫn còn:** q001 xếp `d36:k2` trên `d35:k1` (hạng 2), q002 ("Người lao động muốn nghỉ việc phải báo trước bao nhiêu ngày?") để Điều 35 ở hạng 3.
+- **Câu nêu số Điều:** 2/12 trượt top 5 (q094 "Nội dung của Điều 140 là gì?", q095 "Điều 198 nói về vấn đề gì?"), vì vector không mang số Điều. Đây là việc của lọc metadata ở Tuần 4.
+- **Điểm top-1:** trong phạm vi (102 câu) thấp nhất 0,478, trung vị 0,704, cao nhất 0,811; ngoài phạm vi (25 câu) thấp nhất 0,305, trung vị 0,475, cao nhất 0,623. 12/25 câu ngoài phạm vi có điểm cao hơn câu trong phạm vi thấp nhất, nên một ngưỡng điểm đơn lẻ không tách được hai nhóm.
+
 ## Dữ liệu
 
 Bản hợp nhất 18/VBHN-VPQH ngày 12/02/2026 của Bộ luật Lao động 45/2019/QH14, kiểm tra hiệu lực ngày 13/11/2026. Nguồn gốc và checksum xem ở `data/raw/SOURCES.md`.
