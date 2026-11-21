@@ -256,6 +256,35 @@ def test_question_to_json_round_trips_vietnamese():
     assert Question.model_validate_json(line) == question
 
 
+def test_draft_file_is_valid_and_complete(all_chunks):
+    questions = load_questions(REPO_ROOT / "eval/questions.draft.jsonl")
+
+    assert check_gold_ids(questions, all_chunks) == []
+    group_counts: dict[str, int] = {}
+    for q in questions:
+        group_counts[q.group] = group_counts.get(q.group, 0) + 1
+    assert group_counts == {"direct": 45, "paraphrase": 45, "article_ref": 12, "out_of_scope": 25}
+
+    pair_articles: dict[str, list[int]] = {}
+    for q in questions:
+        if q.group == "direct":
+            pair_articles[q.pair_id] = q.gold_articles
+    assert len(pair_articles) == 45
+    # Every pair has exactly one article, and no article belongs to two pairs.
+    assert all(len(articles) == 1 for articles in pair_articles.values())
+    paired = [articles[0] for articles in pair_articles.values()]
+    assert len(set(paired)) == 45
+
+    ref_articles = {a for q in questions if q.group == "article_ref" for a in q.gold_articles}
+    assert ref_articles.isdisjoint(paired)
+
+    assert any(q.pair_id == "p01" and q.gold_ids == [D35K1] for q in questions)
+
+    chapter_of = {chunk.article: chunk.chapter for chunk in all_chunks}
+    assert {chapter_of[a] for a in paired} == set(chapter_of.values())
+    assert len(set(chapter_of.values())) == 17
+
+
 def test_reviewed_questions_file_is_valid(all_chunks):
     questions = load_questions(REPO_ROOT / "eval/questions.jsonl")
 
