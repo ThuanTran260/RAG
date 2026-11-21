@@ -2,7 +2,7 @@
 
 Ghi lại số liệu sau mỗi thay đổi (recall@5, recall@10, MRR), kể cả thử nghiệm không hiệu quả.
 
-Baseline dense đo ngày 22/11/2026 trên bộ câu `577b8392afeb` (127 câu, xem mục "Đánh giá truy xuất" trong `README.md`). Ba cột số là mức Điều trên 90 câu `direct` + `paraphrase`; mức Khoản ghi ở cột Ghi chú. recall@5 mức Điều đã chạm trần 1,000, nên các thay đổi sau cần so thêm MRR@10 và hạng 1 (xem README).
+Baseline dense đo ngày 22/11/2026 trên bộ câu `577b8392afeb` (127 câu, xem mục "Đánh giá truy xuất" trong `README.md`). Ba cột số là mức Điều trên 90 câu `direct` + `paraphrase`; mức Khoản ghi ở cột Ghi chú. recall@5 mức Điều đã chạm trần 1,000, nên các thay đổi sau cần so thêm MRR@10 và hạng 1 (xem README). Sau duyệt nghiệm thu, Điều 129 là đáp án của hai cặp (p25 và p31, vì `d129:k1` được thêm vào p31 cho đủ đáp án) nên quy tắc "mỗi Điều một cặp" của spec §5.2 không còn đúng cho bộ đã duyệt; đáp án p38 cũng gồm thêm `d193:k3` và `d197:k3`.
 
 | Ngày | Thay đổi | recall@5 | recall@10 | MRR | Ghi chú |
 |---|---|---|---|---|---|

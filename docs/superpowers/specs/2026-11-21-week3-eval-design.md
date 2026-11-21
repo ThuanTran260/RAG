@@ -1,6 +1,6 @@
 # Tuần 3: Bộ đánh giá truy xuất (Design)
 
-**Trạng thái:** người dùng duyệt ngày 21/11/2026, gồm cả lựa chọn ghép cặp và yêu cầu lập plan rồi thực thi. Đã qua một vòng builder check của reviewer Opus. Chưa có code và chưa đo recall.
+**Trạng thái:** người dùng duyệt ngày 21/11/2026, gồm cả lựa chọn ghép cặp và yêu cầu lập plan rồi thực thi. Đã qua một vòng builder check của reviewer Opus. Code đã xong; ngày 22/11/2026 người dùng giao việc duyệt bộ câu cho người điều phối (ba reviewer Claude Opus, theo tiêu chí từ tài liệu nghiên cứu), và baseline dense đã đo (xem `eval/results.md`).
 
 ## 1. Mục đích
 
@@ -20,7 +20,7 @@ Thuật ngữ dùng trong tài liệu:
 
 **Mục tiêu**
 
-1. `eval/questions.jsonl` có ít nhất 110 câu đã được người dùng duyệt từng câu: ít nhất 40 câu trực tiếp, 40 câu đời thường, 20 câu ngoài phạm vi và 10 câu nêu số Điều (nhóm `article_ref`, phục vụ phần lọc metadata ở Tuần 4, `KE_HOACH_RAG.md:117`).
+1. `eval/questions.jsonl` có ít nhất 110 câu đã được người dùng duyệt từng câu: ít nhất 40 câu trực tiếp, 40 câu đời thường, 20 câu ngoài phạm vi và 10 câu nêu số Điều (nhóm `article_ref`, phục vụ phần lọc metadata ở Tuần 4, `KE_HOACH_RAG.md:117`). Ngày 22/11/2026 người dùng giao việc duyệt này cho người điều phối, người này giao lại cho ba reviewer Claude Opus; bộ câu vì thế chưa được người duyệt từng câu.
 2. Lệnh `uv run python -m eval.run_eval` in recall@5, recall@10 và MRR ở hai mức (Điều và Khoản), có tách theo nhóm câu hỏi, liệt kê các câu trượt và phân bố điểm top-1 của câu ngoài phạm vi.
 3. Ghi dòng baseline dense vào `eval/results.md`.
 4. Có công cụ duyệt từng câu theo kiểu wizard: `uv run python -m eval.review_questions`.
