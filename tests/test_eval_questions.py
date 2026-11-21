@@ -85,68 +85,69 @@ def test_load_questions_empty_file_returns_empty_list(tmp_path):
 
 
 def _broken_json(records):
-    return [records[0], "{not json"] + records[2:], 2
+    return [records[0], "{not json"] + records[2:], 2, "invalid JSON"
 
 
 def _extra_field(records):
     records[0]["score"] = 1
-    return records, 1
+    return records, 1, "score (extra_forbidden)"
 
 
 def _missing_gold_articles(records):
     del records[2]["gold_articles"]
-    return records, 3
+    return records, 3, "gold_articles (missing)"
 
 
 def _bad_id(records):
     records[1]["id"] = "Q1"
-    return records, 2
+    return records, 2, "id (string_pattern_mismatch)"
 
 
 def _duplicate_id(records):
     records[1]["id"] = "q001"
-    return records, 2
+    return records, 2, "duplicate id"
 
 
 def _bad_group(records):
     records[2]["group"] = "other"
-    return records, 3
+    return records, 3, "group (literal_error)"
 
 
 def _nfd_question(records):
     records[3]["question"] = unicodedata.normalize("NFD", "Người lao động")
-    return records, 4
+    return records, 4, "not NFC-normalized"
 
 
 def _blank_question(records):
     records[3]["question"] = "   "
-    return records, 4
+    return records, 4, "question is empty"
 
 
 def _out_of_scope_with_gold(records):
     records[3]["gold_ids"] = [D35K1]
-    return records, 4
+    records[3]["gold_articles"] = [35]  # keep the iff rule satisfied so the group rule fires
+    return records, 4, "out_of_scope needs"
 
 
 def _direct_without_pair(records):
     records[0]["pair_id"] = None
-    return records, 1
+    return records, 1, "direct needs gold_ids and a pair_id"
 
 
 def _article_out_of_range(records):
     records[2]["gold_articles"] = [221]
-    return records, 3
+    return records, 3, "within 1-220"
 
 
 def _articles_not_increasing(records):
     records[2]["gold_ids"] = [D35K2, D24K1]
     records[2]["gold_articles"] = [36, 35]
-    return records, 3
+    return records, 3, "strictly increasing"
 
 
 def _two_directs_in_pair(records):
     records[1]["group"] = "direct"
-    return records, 1
+    return records, 1, "exactly one direct and one paraphrase"
 
 
 @pytest.mark.parametrize(
@@ -168,11 +169,14 @@ def _two_directs_in_pair(records):
     ],
 )
 def test_load_questions_rejects(tmp_path, mutate):
-    records, line = mutate(valid_records())
+    records, line, reason = mutate(valid_records())
     path = write_lines(tmp_path, records)
 
-    with pytest.raises(QuestionFileError, match=rf":{line}:"):
+    with pytest.raises(QuestionFileError) as info:
         load_questions(path)
+
+    assert f":{line}:" in str(info.value)
+    assert reason in str(info.value)
 
 
 def test_load_questions_error_does_not_echo_line_content(tmp_path):
