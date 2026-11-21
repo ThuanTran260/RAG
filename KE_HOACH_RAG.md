@@ -101,8 +101,8 @@ Trước khi nạp, **kiểm tra tình trạng hiệu lực** của từng văn 
 ### Tuần 2 — RAG cơ bản (baseline)
 - [x] Chạy Qdrant bằng Docker, embedding toàn bộ chunk bằng bge-m3
 - [x] Viết hàm `retrieve(query, k)`
-- [ ] Viết hàm `generate(query, contexts)`
-- [ ] Prompt yêu cầu: chỉ trả lời dựa trên ngữ cảnh, ghi rõ Điều/Khoản, nói "không tìm thấy" nếu thiếu căn cứ
+- [x] Viết hàm `generate(query, contexts)`
+- [x] Prompt yêu cầu: chỉ trả lời dựa trên ngữ cảnh, ghi rõ Điều/Khoản, nói "không tìm thấy" nếu thiếu căn cứ
 - **Kết quả:** hỏi đáp chạy được trong terminal hoặc notebook
 
 ### Tuần 3 — Bộ đánh giá
