@@ -1,6 +1,7 @@
 import codecs
 import io
 import json
+import subprocess
 import sys
 import unicodedata
 
@@ -18,6 +19,7 @@ from eval.review_questions import (
     run,
 )
 from ingestion.documents import REPO_ROOT
+from ingestion.models import Chunk
 
 D35K1 = "45-2019-QH14:d35:k1"
 D35K2 = "45-2019-QH14:d35:k2"
@@ -555,6 +557,21 @@ def test_main_reports_a_missing_draft_file(paths, monkeypatch, capsys):
     assert "missing.jsonl" in capsys.readouterr().err
 
 
+def test_main_reports_a_chunks_file_that_fails_schema_validation(paths, monkeypatch, capsys):
+    def broken_load_chunks(path):
+        Chunk.model_validate({})  # raises pydantic.ValidationError
+
+    monkeypatch.setattr(review_questions, "load_chunks", broken_load_chunks)
+    monkeypatch.setattr(review_questions, "run", pytest.fail)
+
+    code = main(["--draft", str(paths["draft"]), "--accepted", str(paths["accepted"])])
+
+    assert code == 1
+    err = capsys.readouterr().err
+    assert err.startswith("invalid chunks file:")
+    assert "Traceback" not in err
+
+
 def test_main_runs_the_wizard_on_a_valid_draft(paths, monkeypatch):
     seen = {}
 
@@ -612,3 +629,24 @@ def test_review_module_does_not_import_retrieval():
 
     for forbidden in ("app.rag.retriever", "app.rag.search", "app.rag.ask"):
         assert forbidden not in source
+
+
+def test_review_module_does_not_load_retrieval_modules_transitively():
+    # A fresh interpreter, so modules imported by other tests do not hide a transitive import.
+    code = (
+        "import sys, eval.review_questions; "
+        "bad = [m for m in ('app.rag.retriever', 'app.rag.search', 'app.rag.ask') "
+        "if m in sys.modules]; "
+        "print(','.join(bad)); sys.exit(1 if bad else 0)"
+    )
+
+    done = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=REPO_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+
+    assert done.returncode == 0, done.stdout + done.stderr

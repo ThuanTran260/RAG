@@ -105,6 +105,13 @@ def _scores(ranks: Sequence[int | None], clause_level: bool = True) -> list[str]
     ]
 
 
+def _scores_with_r1(ranks: Sequence[int | None], clause_level: bool = True) -> list[str]:
+    """recall@1 followed by _scores(); the report prints it, the results.md row does not."""
+    if not clause_level or not ranks:
+        return [NA, NA, NA, NA]
+    return [format_score(recall_at(ranks, 1)), *_scores(ranks)]
+
+
 def _article_ranks(results: Sequence[QuestionResult]) -> list[int | None]:
     return [r.rank_article for r in results]
 
@@ -133,17 +140,29 @@ def _table_section(results: Sequence[QuestionResult], clause_level: bool) -> lis
         ("article_ref", _group(results, "article_ref")),
     ]
     header = (
-        f"{'':<12}{'n':>4}  {'Điều: R@5':>10} {'R@10':>7} {'MRR@10':>7}"
-        f"  {'Khoản: R@5':>11} {'R@10':>7} {'MRR@10':>7}"
+        f"{'':<12}{'n':>4}  {'Điều: R@1':>10} {'R@5':>7} {'R@10':>7} {'MRR@10':>7}"
+        f"  {'Khoản: R@1':>11} {'R@5':>7} {'R@10':>7} {'MRR@10':>7}"
     )
     lines = [header]
     for name, group in rows:
-        article = _scores(_article_ranks(group))
-        clause = _scores(_clause_ranks(group), clause_level)
+        article = _scores_with_r1(_article_ranks(group))
+        clause = _scores_with_r1(_clause_ranks(group), clause_level)
         lines.append(
             f"{name:<12}{len(group):>4}  {article[0]:>10} {article[1]:>7} {article[2]:>7}"
-            f"  {clause[0]:>11} {clause[1]:>7} {clause[2]:>7}"
+            f" {article[3]:>7}  {clause[0]:>11} {clause[1]:>7} {clause[2]:>7} {clause[3]:>7}"
         )
+    return lines
+
+
+def _histogram_section(results: Sequence[QuestionResult]) -> list[str]:
+    """How many questions found their Điều at each rank 1..EVAL_K; 'trượt' = not in the top 10."""
+    header = f"{'':<12}" + "".join(f"{rank:>4}" for rank in range(1, EVAL_K + 1)) + f"{'trượt':>7}"
+    lines = [header]
+    for name in ("direct", "paraphrase"):
+        ranks = _article_ranks(_group(results, name))
+        counts = [sum(1 for r in ranks if r == rank) for rank in range(1, EVAL_K + 1)]
+        misses = sum(1 for r in ranks if r is None)
+        lines.append(f"{name:<12}" + "".join(f"{count:>4}" for count in counts) + f"{misses:>7}")
     return lines
 
 
@@ -227,6 +246,7 @@ def render_report(
         ["## 4. Điểm top-1"] + _score_section(results),
         [f"## 5. Bảng cặp direct/paraphrase (trúng = Điều đúng trong top {ARTICLE_HIT_K})"]
         + _pair_section(results),
+        ["## 6. Phân bố hạng của Điều đúng (số câu, mức Điều)"] + _histogram_section(results),
     ]
     return "\n\n".join("\n".join(lines) for lines in sections)
 

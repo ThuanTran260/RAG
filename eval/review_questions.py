@@ -15,6 +15,8 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from pydantic import ValidationError
+
 from eval.questions import (
     Group,
     Question,
@@ -343,6 +345,9 @@ def main(argv: list[str] | None = None) -> int:
             print("unknown gold ids: " + ", ".join(missing), file=sys.stderr)
             return 1
         session = ReviewSession(drafts, chunks, args.accepted, args.rejected)
+    except ValidationError as error:
+        print(f"invalid chunks file: {error}", file=sys.stderr)
+        return 1
     except (QuestionFileError, OSError) as error:
         print(error, file=sys.stderr)
         return 1

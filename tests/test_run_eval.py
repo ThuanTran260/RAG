@@ -128,6 +128,61 @@ def test_render_report_prints_scores_with_decimal_comma(results):
     assert "0,396" in report  # main clause-level MRR
 
 
+def _section(report, number):
+    """Lines of the numbered report section (without its heading)."""
+    body = report.split(f"## {number}.")[1]
+    return body.split("\n\n## ")[0].splitlines()[1:]
+
+
+def _row(lines, name):
+    return next(line.split() for line in lines if line.startswith(name))
+
+
+def test_render_report_table_has_recall_at_1_for_both_levels(results):
+    report = run_eval.render_report(
+        results, clause_level=True, collection="c", model="m", digest=DIGEST
+    )
+    table = _section(report, 2)
+    # name, n, then Điều R@1 R@5 R@10 MRR@10, then Khoản R@1 R@5 R@10 MRR@10
+    assert _row(table, "direct") == [
+        *("direct", "2"),
+        *("0,500", "1,000", "1,000", "0,667"),
+        *("0,500", "1,000", "1,000", "0,625"),
+    ]
+    assert _row(table, "paraphrase")[2:4] == ["0,000", "0,500"]  # Điều R@1, R@5
+    assert _row(table, "số chính")[3:6] == ["0,250", "0,750", "0,750"]  # after "số", "chính", n
+
+
+def test_render_report_recall_at_1_is_na_at_clause_level_without_gold_ids(results):
+    report = run_eval.render_report(
+        results, clause_level=False, collection="c", model="m", digest=DIGEST
+    )
+    row = _row(_section(report, 2), "direct")
+    assert row[2:6] == ["0,500", "1,000", "1,000", "0,667"]
+    assert row[6:] == ["N/A", "N/A", "N/A", "N/A"]
+
+
+def test_render_report_lists_article_rank_histograms_for_direct_and_paraphrase(results):
+    report = run_eval.render_report(
+        results, clause_level=True, collection="c", model="m", digest=DIGEST
+    )
+    histogram = _section(report, 6)
+    assert report.index("## 5.") < report.index("## 6.")  # existing sections keep their numbers
+    # ranks 1..10 then "miss" (not in the top 10); direct ranks are [3, 1]
+    assert _row(histogram, "direct") == ["direct", "1", "0", "1", *["0"] * 7, "0"]
+    # paraphrase ranks are [None, 2]
+    assert _row(histogram, "paraphrase") == ["paraphrase", "0", "1", *["0"] * 8, "1"]
+    assert "article_ref" not in "\n".join(histogram)
+
+
+def test_render_report_histogram_handles_a_group_without_questions(fake):
+    only_direct = run_eval.evaluate([Q_DIRECT_1], fake)
+    report = run_eval.render_report(
+        only_direct, clause_level=True, collection="c", model="m", digest=DIGEST
+    )
+    assert _row(_section(report, 6), "paraphrase") == ["paraphrase", *["0"] * 11]
+
+
 def test_render_report_without_clause_level_prints_na(results):
     report = run_eval.render_report(
         results, clause_level=False, collection="c", model="m", digest=DIGEST
