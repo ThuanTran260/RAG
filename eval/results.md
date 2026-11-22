@@ -2,7 +2,7 @@
 
 Ghi lại số liệu sau mỗi thay đổi (recall@5, recall@10, MRR), kể cả thử nghiệm không hiệu quả.
 
-_Chưa có số liệu. Baseline sẽ được đo ở Tuần 3._
+Baseline dense đo ngày 22/11/2026 trên bộ câu `577b8392afeb` (127 câu, xem mục "Đánh giá truy xuất" trong `README.md`). Ba cột số là mức Điều trên 90 câu `direct` + `paraphrase`; mức Khoản ghi ở cột Ghi chú. recall@5 mức Điều đã chạm trần 1,000, nên các thay đổi sau cần so thêm MRR@10 và hạng 1 (xem README). Sau duyệt nghiệm thu, Điều 129 là đáp án của hai cặp (p25 và p31, vì `d129:k1` được thêm vào p31 cho đủ đáp án) nên quy tắc "mỗi Điều một cặp" của spec §5.2 không còn đúng cho bộ đã duyệt; đáp án p38 cũng gồm thêm `d193:k3` và `d197:k3`.
 
 | Ngày | Thay đổi | recall@5 | recall@10 | MRR | Ghi chú |
 |---|---|---|---|---|---|
@@ -21,3 +21,4 @@ _Chưa có số liệu. Baseline sẽ được đo ở Tuần 3._
 | 2026-11-15 | Stage 2: smoke LLM thật (`RAG_LIVE_LLM=1`, 2 test, 2 request, pass; requested_model và response_model đều là `gemini-3.5-flash-lite`) và 4 lần chạy `ask` bằng tay: 2 câu trong phạm vi trả lời có trích dẫn, 1 câu ngoài phạm vi bị từ chối, 1 lần câu "Thử việc tối đa bao lâu?" ra văn bản lặp vô nghĩa nhưng vẫn qua kiểm tra (chạy lại thì bình thường) | N/A | N/A | N/A | chưa đo recall; không phải số liệu recall; lỗi văn bản lặp chưa xử lý |
 | 2026-11-15 | Stage 2 Task 6: từ chối khẳng định lặp vô nghĩa (degenerate_claim) | N/A | N/A | N/A | chưa đo recall |
 | 2026-11-15 | Stage 2 Task 6, chạy thật sau khi sửa: 10 lần gửi lại cùng request của câu "Thử việc tối đa bao lâu?" (0 lần ra văn bản lặp) và 4 câu hỏi chạy tay qua `ask` (thử việc, thai sản, làm thêm giờ, tuổi nghỉ hưu) đều trả lời có trích dẫn, mã thoát 0; tổng 21 request trong ngày | N/A | N/A | N/A | chưa đo recall; kiểm tra bằng mắt, chưa đối chiếu từng khẳng định với nguyên văn |
+| 2026-11-22 | dense baseline (bge-m3) | 1,000 | 1,000 | 0,907 | Mức Khoản: 0,989 / 1,000 / 0,864; bộ câu 577b8392afeb; n=90 (+12 article_ref, 25 ngoài phạm vi) |
