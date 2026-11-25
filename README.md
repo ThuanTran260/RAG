@@ -107,7 +107,7 @@ Lệnh cần Qdrant đang chạy và model embedding trong cache cục bộ. M�
 
 | Nhóm | n | Điều R@5 | Điều R@10 | Điều MRR@10 | Khoản R@5 | Khoản R@10 | Khoản MRR@10 |
 |---|---|---|---|---|---|---|---|
-| Số chính (direct + paraphrase) | 90 | 1,000 | 1,000 | 0,907 | 0,989 | 1,000 | 0,864 |
+| Gộp (direct + paraphrase) | 90 | 1,000 | 1,000 | 0,907 | 0,989 | 1,000 | 0,864 |
 | direct | 45 | 1,000 | 1,000 | 0,989 | 1,000 | 1,000 | 0,956 |
 | paraphrase | 45 | 1,000 | 1,000 | 0,826 | 0,978 | 1,000 | 0,773 |
 | article_ref | 12 | 0,833 | 0,917 | 0,775 | 0,833 | 0,917 | 0,775 |

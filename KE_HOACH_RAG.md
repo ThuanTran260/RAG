@@ -121,7 +121,7 @@ Trước khi nạp, **kiểm tra tình trạng hiệu lực** của từng văn 
 - [ ] Thêm reranker cho top 20–30 kết quả
 - [ ] Thử nghiệm: chunk theo Khoản so với theo Điều; thêm tên Điều và tên Chương vào đầu mỗi chunk
 - [ ] Đánh giá chất lượng câu trả lời (faithfulness, có trích dẫn đúng không):
-  - [ ] Chấm tay 30 câu trả lời theo từng cặp (khẳng định, nguồn được trích): chunk được trích có ủng hộ khẳng định không. Ghi thêm context relevance (ngữ cảnh truy xuất có liên quan tới câu hỏi) và answer relevance (câu trả lời có đúng trọng tâm câu hỏi) (Gao và cộng sự, §VI.C)
+  - [ ] Chấm tay 30 câu trả lời theo từng cặp (khẳng định, nguồn được trích): chunk được trích có ủng hộ khẳng định không. Có thể dùng RAGAS thay cho chấm tay, như bảng ở mục 3. Ghi thêm context relevance (ngữ cảnh truy xuất có liên quan tới câu hỏi) và answer relevance (câu trả lời có đúng trọng tâm câu hỏi) (Gao và cộng sự, §VI.C)
   - [ ] Chạy 25 câu ngoài phạm vi của bộ câu đóng băng qua `ask`. Báo tỷ lệ từ chối đúng (`insufficient`) và tỷ lệ từ chối nhầm trên câu trong phạm vi (khả năng "negative rejection": từ chối khi tài liệu truy xuất không chứa câu trả lời). Bước này tốn quota LLM
   - [ ] Phép thử bỏ đáp án (gold-removed probe, theo Lewis và cộng sự, §4): trên các câu hỏi mới ngoài bộ câu đóng băng, bỏ các chunk đáp án khỏi ngữ cảnh rồi đếm số câu trả lời không phải `insufficient`
   - [ ] Khi so sánh nhiều biến thể reranker hoặc chunking, ghi pre-registration (luật so sánh và luật chốt, viết trước khi nhìn kết quả) vào spec của tuần trước khi đo, như Tuần 4
