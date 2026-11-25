@@ -135,6 +135,24 @@ def test_load_run_picks_the_rank_of_the_requested_level(tmp_path):
     assert load_run(path, "clause") == {"q1": ("direct", 3), "q2": ("out_of_scope", None)}
 
 
+def test_load_run_rejects_a_duplicate_question_id(tmp_path):
+    path = _write_run(
+        tmp_path / "duplicated.jsonl",
+        [("q1", "direct", 1, 1), ("q2", "direct", 1, 1), ("q1", "direct", 2, 2)],
+    )
+    with pytest.raises(ValueError) as error:
+        load_run(path)
+    assert "q1" in str(error.value)
+    assert str(path) in str(error.value)
+
+
+@pytest.mark.parametrize("level", ["Article", "chunk", ""])
+def test_load_run_rejects_an_unknown_level(tmp_path, level):
+    path = _write_run(tmp_path / "run.jsonl", [("q1", "direct", 1, 1)])
+    with pytest.raises(ValueError, match="level"):
+        load_run(path, level)
+
+
 def test_paired_r1_counts_gains_and_losses_within_the_group(tmp_path):
     # (id, group, rank in A, rank in B)
     ranks = [
@@ -178,6 +196,13 @@ def test_paired_r1_rejects_runs_over_different_questions(run_b, group):
         paired_r1(run_b, run_a, group)
 
 
+@pytest.mark.parametrize("group", ["paraphase", "article_ref"])
+def test_paired_r1_rejects_a_group_without_questions(group):
+    run = {"q1": ("direct", 1), "q2": ("paraphrase", 2)}
+    with pytest.raises(ValueError, match=group):
+        paired_r1(run, run, group)
+
+
 @pytest.mark.parametrize(
     ("group", "n", "hits"),
     [
@@ -198,7 +223,8 @@ def test_baseline_run_against_itself_at_clause_level():
         group: paired_r1(base, base, group)
         for group in ("direct", "paraphrase", "article_ref", "out_of_scope")
     }
-    assert results["direct"].hits_a + results["paraphrase"].hits_a == 70
+    assert results["direct"].hits_a == 41
+    assert results["paraphrase"].hits_a == 29
     assert results["article_ref"].hits_a == 9
     for result in results.values():
         assert result.hits_b == result.hits_a

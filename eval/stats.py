@@ -79,7 +79,8 @@ def clopper_pearson(x: int, n: int, level: float = 0.95) -> tuple[float, float]:
         raise ValueError("x must be between 0 and n")
     if not 0 < level < 1:
         raise ValueError("level must be between 0 and 1")
-    half_alpha = (1 - Fraction(level)) / 2
+    # Via str, so that 0.95 means 19/20 and not the nearest binary float.
+    half_alpha = (1 - Fraction(str(level))) / 2
     lower = 0.0 if x == 0 else _solve_upper_tail(x, n, half_alpha)
     # P(X <= x) = alpha/2 is the same equation as P(X >= x + 1) = 1 - alpha/2.
     upper = 1.0 if x == n else _solve_upper_tail(x + 1, n, 1 - half_alpha)
@@ -89,13 +90,21 @@ def clopper_pearson(x: int, n: int, level: float = 0.95) -> tuple[float, float]:
 def load_run(
     path: Path, level: Literal["article", "clause"] = "article"
 ) -> dict[str, tuple[str, int | None]]:
-    """Read a run file written by `eval/run_eval.py --out` as question id -> (group, rank)."""
+    """Read a run file written by `eval/run_eval.py --out` as question id -> (group, rank).
+
+    Raises ValueError for an unknown level or a question id that appears more than once.
+    """
+    if level not in ("article", "clause"):
+        raise ValueError(f"level must be 'article' or 'clause', not {level!r}")
     rank_key = f"rank_{level}"
     run: dict[str, tuple[str, int | None]] = {}
     with path.open(encoding="utf-8") as file:
         for line in file:
             row = json.loads(line)
-            run[row["id"]] = (row["group"], row[rank_key])
+            question_id = row["id"]
+            if question_id in run:
+                raise ValueError(f"duplicate question id {question_id} in {path}")
+            run[question_id] = (row["group"], row[rank_key])
     return run
 
 
@@ -116,7 +125,8 @@ def paired_r1(
 ) -> PairedR1:
     """Count recall@1 hits of two runs over the questions of one group.
 
-    Raises ValueError unless both runs hold exactly the same question ids with the same groups.
+    Raises ValueError unless both runs hold exactly the same question ids with the same groups,
+    and when no question belongs to the requested group.
     """
     groups_a = {question_id: entry[0] for question_id, entry in run_a.items()}
     groups_b = {question_id: entry[0] for question_id, entry in run_b.items()}
@@ -128,6 +138,8 @@ def paired_r1(
         )
         raise ValueError(f"runs differ in question ids or groups: {', '.join(differing)}")
     ids = [question_id for question_id, name in groups_a.items() if name == group]
+    if not ids:
+        raise ValueError(f"no questions in group {group!r}")
     pairs = [(run_a[i][1] == 1, run_b[i][1] == 1) for i in ids]
     return PairedR1(
         group=group,
