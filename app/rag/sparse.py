@@ -66,6 +66,7 @@ _INTERROGATIVES = tuple(
 )
 # Removed only from the end of a question: "không" and "chưa" carry meaning anywhere else.
 _TRAILING_PARTICLE = re.compile(r"(?<!\w)(?:không|chưa|à|ư|nhỉ|nhé|hả|ạ|vậy)\Z")
+_LEADING_RESIDUE = re.compile(r"\A[\s|]+")
 
 
 @dataclass(frozen=True)
@@ -115,6 +116,7 @@ def clean_query(text: str) -> str:
     """Normalise a question and remove its interrogatives and final particles.
 
     A removed interrogative leaves "|", a segment break, so no bigram joins its neighbours.
+    Markers and whitespace left at either end are dropped.
     """
     text = normalize(text)
     for interrogative in _INTERROGATIVES:
@@ -123,7 +125,8 @@ def clean_query(text: str) -> str:
         text = _drop_trailing_non_word(text)
         particle = _TRAILING_PARTICLE.search(text)
         if particle is None:
-            return text
+            # The end is already clean; only the start can still hold a marker.
+            return _LEADING_RESIDUE.sub("", text)
         text = text[: particle.start()]
 
 

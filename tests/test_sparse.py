@@ -202,10 +202,18 @@ def test_other_non_word_characters_end_a_segment(separator):
         ("Đã đủ tuổi nghỉ hưu chưa?", "đã đủ tuổi nghỉ hưu"),
         ("Thay thế người lao động thế nào?", "thay thế người lao động"),
         ("Ai?", ""),
+        ("Mấy giờ?", "giờ"),
+        ("Ai là ai?", "là"),
+        ("\n Mấy giờ?", "giờ"),
     ],
 )
 def test_clean_query(question, cleaned):
     assert clean_query(question) == cleaned
+
+
+@pytest.mark.parametrize(("question", "terms"), [("Mấy giờ?", ["giờ"]), ("Ai là ai?", ["là"])])
+def test_query_terms_of_a_question_that_starts_with_an_interrogative(question, terms):
+    assert query_terms(question) == terms
 
 
 @pytest.mark.parametrize(
