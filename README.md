@@ -2,7 +2,7 @@
 
 Hỏi đáp tiếng Việt về Bộ luật Lao động 2019 (45/2019/QH14), trả lời kèm trích dẫn Điều/Khoản gốc.
 
-Hệ thống dùng RAG (retrieval-augmented generation; Lewis và cộng sự, NeurIPS 2020, https://arxiv.org/abs/2005.11401) theo nghĩa: truy xuất các chunk liên quan, yêu cầu mô hình ngôn ngữ chỉ trả lời dựa trên các chunk đó và gắn mã nguồn `[S#]` cho từng khẳng định, rồi hệ thống hiển thị nhãn Điều/Khoản và nguyên văn của các chunk được trích, lấy từ dữ liệu chứ không từ văn bản mô hình viết.
+Hệ thống dùng RAG (retrieval-augmented generation, thuật ngữ của Lewis và cộng sự, NeurIPS 2020, https://arxiv.org/abs/2005.11401) theo nghĩa rộng, không fine-tune mô hình như bài báo gốc: truy xuất các chunk liên quan, yêu cầu mô hình ngôn ngữ chỉ trả lời dựa trên các chunk đó và gắn mã nguồn `[S#]` cho từng khẳng định, rồi hệ thống hiển thị nhãn Điều/Khoản và nguyên văn của các chunk được trích, lấy từ dữ liệu chứ không từ văn bản mô hình viết.
 
 > Thông tin chỉ mang tính tham khảo, không thay thế tư vấn pháp lý. Câu trả lời do mô hình ngôn ngữ (AI) tạo ra, có thể sai; hãy đối chiếu với nguyên văn Điều/Khoản được trích.
 
