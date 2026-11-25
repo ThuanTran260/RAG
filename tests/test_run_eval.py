@@ -7,7 +7,8 @@ import pytest
 from app.rag.retriever import RetrievedChunk
 from app.rag.store import QdrantUnavailableError
 from eval import run_eval
-from eval.questions import Question, question_to_json
+from eval.questions import Question, load_questions, question_to_json
+from ingestion.documents import REPO_ROOT
 
 PREFIX = "45-2019-QH14:"
 DIGEST = "abc123def456"
@@ -200,6 +201,7 @@ def test_render_report_handles_groups_without_questions(fake):
     row = run_eval.results_row(
         only_direct, clause_level=True, digest=DIGEST, label="x", day=date(2026, 11, 21)
     )
+    assert "direct 0/1, paraphrase 0/0;" in row
     assert "n=1 (+0 article_ref, 0 ngoài phạm vi)" in row
 
 
@@ -207,10 +209,15 @@ def test_results_row_format(results):
     row = run_eval.results_row(
         results, clause_level=True, digest=DIGEST, label="dense baseline", day=date(2026, 11, 21)
     )
+    # Main questions are q001, q002 (paraphrase), q005, q006 (paraphrase).
+    # Article ranks [3, None, 1, 2]: R@1 1/4, R@5 and R@10 3/4, MRR (1/3 + 1 + 1/2) / 4 = 0.4583
+    # Clause ranks [4, None, 1, 3]: R@1 1/4, R@5 and R@10 3/4, MRR (1/4 + 1 + 1/3) / 4 = 0.3958
+    # Rank-1 articles by group: direct [3, 1] -> 1/2, paraphrase [None, 2] -> 0/2
     assert row == (
-        "| 2026-11-21 | dense baseline | 0,750 | 0,750 | 0,458 | "
-        f"Mức Khoản: 0,750 / 0,750 / 0,396; bộ câu {DIGEST}; "
-        "n=4 (+1 article_ref, 1 ngoài phạm vi) |"
+        "| 2026-11-21 | dense baseline | 0,250 | 0,750 | 0,750 | 0,458 | "
+        "Mức Khoản: 0,250 / 0,750 / 0,750 / 0,396; "
+        "R@1 theo nhóm (mức Điều): direct 1/2, paraphrase 0/2; "
+        f"bộ câu {DIGEST}; n=4 (+1 article_ref, 1 ngoài phạm vi) |"
     )
 
 
@@ -218,8 +225,41 @@ def test_results_row_without_clause_level(results):
     row = run_eval.results_row(
         results, clause_level=False, digest=DIGEST, label="dense baseline", day=date(2026, 11, 21)
     )
-    assert "Mức Khoản: N/A / N/A / N/A;" in row
-    assert row.startswith("| 2026-11-21 | dense baseline | 0,750 | 0,750 | 0,458 | ")
+    # Same article ranks [3, None, 1, 2] as above; the four clause-level scores are unavailable.
+    assert row == (
+        "| 2026-11-21 | dense baseline | 0,250 | 0,750 | 0,750 | 0,458 | "
+        "Mức Khoản: N/A / N/A / N/A / N/A; "
+        "R@1 theo nhóm (mức Điều): direct 1/2, paraphrase 0/2; "
+        f"bộ câu {DIGEST}; n=4 (+1 article_ref, 1 ngoài phạm vi) |"
+    )
+
+
+def test_baseline_row_matches_results_md():
+    """The committed baseline row is what results_row prints for the saved run."""
+    questions_path = REPO_ROOT / "eval" / "questions.jsonl"
+    run_path = REPO_ROOT / "eval" / "runs" / "2026-11-22-dense-baseline.jsonl"
+    saved = {
+        row["id"]: row for row in map(json.loads, run_path.read_text(encoding="utf-8").splitlines())
+    }
+    results = [
+        run_eval.QuestionResult(
+            question,
+            top=[],
+            rank_article=saved[question.id]["rank_article"],
+            rank_clause=saved[question.id]["rank_clause"],
+        )
+        for question in load_questions(questions_path)
+    ]
+    row = run_eval.results_row(
+        results,
+        clause_level=True,
+        digest="577b8392afeb",
+        label="dense baseline (bge-m3)",
+        day=date(2026, 11, 22),
+    )
+    results_md = (REPO_ROOT / "eval" / "results.md").read_text(encoding="utf-8")
+    assert run_eval.questions_digest(questions_path) == "577b8392afeb"
+    assert row in results_md.splitlines()
 
 
 def test_questions_digest_is_12_hex_chars(tmp_path):
@@ -237,7 +277,7 @@ def test_main_prints_report_and_row(tmp_path, monkeypatch, capsys, fake):
     out = capsys.readouterr().out
     assert "| " in out
     assert "dense baseline" in out
-    assert "Mức Khoản: 0,750 / 0,750 / 0,396" in out
+    assert "Mức Khoản: 0,250 / 0,750 / 0,750 / 0,396" in out
 
 
 def test_main_missing_gold_ids_warns_and_uses_article_level(
@@ -252,7 +292,7 @@ def test_main_missing_gold_ids_warns_and_uses_article_level(
     assert run_eval.main(["--questions", str(path), "--chunks", str(partial)]) == 0
     captured = capsys.readouterr()
     assert "clause-level metrics are N/A" in captured.err
-    assert "Mức Khoản: N/A / N/A / N/A" in captured.out
+    assert "Mức Khoản: N/A / N/A / N/A / N/A" in captured.out
 
 
 def test_main_empty_questions_returns_1(tmp_path, monkeypatch, capsys, fake):
