@@ -39,9 +39,9 @@ Repo là **PUBLIC**: mọi thứ đã commit coi như đã công bố.
 
 ## Eval gate
 
-- Chạy `eval/run_eval.py` trước và sau thay đổi. Ghi một dòng vào `eval/results.md` (recall@5, recall@10, MRR), kể cả khi thử nghiệm không hiệu quả.
-- Nếu recall@5 giảm, chỉ chốt thay đổi sau khi giải thích được nguyên nhân.
-- Baseline đo ở Tuần 3. Trước đó `run_eval.py` là placeholder và `eval/questions.jsonl` rỗng, nên gate dựa vào test và số liệu chuẩn trong plan của tuần (nếu plan có); báo cáo ghi rõ "chưa đo recall".
+- Chạy `eval/run_eval.py` trước và sau thay đổi. Ghi một dòng vào `eval/results.md` (recall@1, recall@5, recall@10, MRR ở mức Điều; mức Khoản và R@1 theo nhóm ở cột Ghi chú), kể cả khi thử nghiệm không hiệu quả.
+- recall@5 mức Điều đã chạm trần 1,000 trên bộ câu đóng băng, nên chỉ số chính là R@1 theo nhóm; MRR@10 là chỉ số phụ. Mọi câu tụt hạng phải được liệt kê kèm nguyên nhân.
+- Thay đổi đã có pre-registration trong spec của tuần thì chốt theo luật và chỉ số quyết định trong spec đó; số liệu ngoài pre-registration ghi là thăm dò.
 
 ## Điều phối sub-agent
 

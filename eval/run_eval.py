@@ -106,7 +106,7 @@ def _scores(ranks: Sequence[int | None], clause_level: bool = True) -> list[str]
 
 
 def _scores_with_r1(ranks: Sequence[int | None], clause_level: bool = True) -> list[str]:
-    """recall@1 followed by _scores(); the report prints it, the results.md row does not."""
+    """recall@1 followed by _scores(); used by the report and the results.md row."""
     if not clause_level or not ranks:
         return [NA, NA, NA, NA]
     return [format_score(recall_at(ranks, 1)), *_scores(ranks)]
@@ -261,13 +261,18 @@ def results_row(
 ) -> str:
     """One line for the table in eval/results.md."""
     main = _group(results, *IN_SCOPE_MAIN)
-    article = _scores(_article_ranks(main))
-    clause = " / ".join(_scores(_clause_ranks(main), clause_level))
+    article = " | ".join(_scores_with_r1(_article_ranks(main)))
+    clause = " / ".join(_scores_with_r1(_clause_ranks(main), clause_level))
+    rank1_by_group = []
+    for name in IN_SCOPE_MAIN:
+        ranks = _article_ranks(_group(results, name))
+        rank1_by_group.append(f"{name} {sum(1 for r in ranks if r == 1)}/{len(ranks)}")
     refs = len(_group(results, "article_ref"))
     out_of_scope = len(_group(results, "out_of_scope"))
     return (
-        f"| {day.isoformat()} | {label} | {article[0]} | {article[1]} | {article[2]} | "
-        f"Mức Khoản: {clause}; bộ câu {digest}; "
+        f"| {day.isoformat()} | {label} | {article} | "
+        f"Mức Khoản: {clause}; "
+        f"R@1 theo nhóm (mức Điều): {', '.join(rank1_by_group)}; bộ câu {digest}; "
         f"n={len(main)} (+{refs} article_ref, {out_of_scope} ngoài phạm vi) |"
     )
 
