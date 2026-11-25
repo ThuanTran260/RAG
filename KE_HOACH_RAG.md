@@ -120,7 +120,11 @@ Trước khi nạp, **kiểm tra tình trạng hiệu lực** của từng văn 
 ### Tuần 5 — Reranking và cải thiện chunking
 - [ ] Thêm reranker cho top 20–30 kết quả
 - [ ] Thử nghiệm: chunk theo Khoản so với theo Điều; thêm tên Điều và tên Chương vào đầu mỗi chunk
-- [ ] Đánh giá chất lượng câu trả lời (faithfulness, có trích dẫn đúng không) bằng RAGAS hoặc chấm tay 30 câu
+- [ ] Đánh giá chất lượng câu trả lời (faithfulness, có trích dẫn đúng không):
+  - [ ] Chấm tay 30 câu trả lời theo từng cặp (khẳng định, nguồn được trích): chunk được trích có ủng hộ khẳng định không. Ghi thêm context relevance (ngữ cảnh truy xuất có liên quan tới câu hỏi) và answer relevance (câu trả lời có đúng trọng tâm câu hỏi) (Gao và cộng sự, §VI.C)
+  - [ ] Chạy 25 câu ngoài phạm vi của bộ câu đóng băng qua `ask`. Báo tỷ lệ từ chối đúng (`insufficient`) và tỷ lệ từ chối nhầm trên câu trong phạm vi (khả năng "negative rejection": từ chối khi tài liệu truy xuất không chứa câu trả lời). Bước này tốn quota LLM
+  - [ ] Phép thử bỏ đáp án (gold-removed probe, theo Lewis và cộng sự, §4): trên các câu hỏi mới ngoài bộ câu đóng băng, bỏ các chunk đáp án khỏi ngữ cảnh rồi đếm số câu trả lời không phải `insufficient`
+  - [ ] Khi so sánh nhiều biến thể reranker hoặc chunking, ghi pre-registration (luật so sánh và luật chốt, viết trước khi nhìn kết quả) vào spec của tuần trước khi đo, như Tuần 4
 - **Kết quả:** chọn cấu hình tốt nhất dựa trên số liệu
 
 ### Tuần 6 — Backend API
@@ -238,5 +242,8 @@ RAG/
 - vietnamese-legal-documents: https://huggingface.co/datasets/th1nhng0/vietnamese-legal-documents
 - vietnamese-legal-qa: https://huggingface.co/datasets/thangvip/vietnamese-legal-qa
 - Bài báo "Improving Vietnamese Legal Document Retrieval using Synthetic Data": https://arxiv.org/abs/2412.00657
+- Bài báo "Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks": https://arxiv.org/abs/2005.11401 (Lewis và cộng sự, NeurIPS 2020; định nghĩa gốc của RAG)
+- Bài báo "Retrieval-Augmented Generation for Large Language Models: A Survey": https://arxiv.org/abs/2312.10997 (Gao và cộng sự, preprint arXiv v5, 3/2024; bản đồ khái niệm và tiêu chí đánh giá)
+- Bài báo "From Local to Global: A GraphRAG Approach to Query-Focused Summarization": https://arxiv.org/abs/2404.16130 (Edge và cộng sự, preprint arXiv v2, 2/2025; giới hạn của RAG top-k với câu hỏi cần toàn bộ kho văn bản)
 - RAGAS: https://docs.ragas.io/
 - FastAPI: https://fastapi.tiangolo.com/
