@@ -259,7 +259,10 @@ def test_baseline_row_matches_results_md():
     )
     results_md = (REPO_ROOT / "eval" / "results.md").read_text(encoding="utf-8")
     assert run_eval.questions_digest(questions_path) == "577b8392afeb"
-    assert row in results_md.splitlines()
+    lines = results_md.splitlines()
+    assert row in lines
+    # A stale baseline row left beside the new one must not pass.
+    assert sum(line.startswith("| 2026-11-22 |") for line in lines) == 1
 
 
 def test_questions_digest_is_12_hex_chars(tmp_path):
