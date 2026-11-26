@@ -15,6 +15,7 @@ uv sync --locked
 uv run python -m ingestion.download_model
 docker compose up -d qdrant
 uv run python -m ingestion.index
+uv run python -m ingestion.index --hybrid
 uv run python -m app.rag.search "Thử việc tối đa bao lâu?"
 uv run python -m app.rag.ask "Thử việc tối đa bao lâu?"
 uv run pytest
@@ -26,6 +27,7 @@ uv run pytest -m server
 - `uv run python -m ingestion.download_model` là bước tải model một lần trước khi index: dùng `EMBEDDING_MODEL` (mặc định `BAAI/bge-m3`), cần internet, không cần Qdrant và không nhúng hay ghi vector. Lệnh này khởi tạo model trên CPU để tải các file cần thiết, tắt việc transformers tự tải thêm bản safetensors chạy nền (chỉ trong tiến trình lệnh), rồi kiểm tra tokenizer có từ vựng; nếu mạng đứt giữa chừng và cache thiếu file từ vựng, lệnh báo lỗi và thoát mã 1 thay vì báo thành công. Có thể hiện tiến trình và mất vài giây khởi tạo, cộng thêm thời gian tải tùy đường truyền.
 - `index` và `search` chỉ nạp snapshot model đã có trên máy, không liên hệ Hugging Face Hub và không hiện thanh tiến trình nạp trọng số; chúng vẫn cần kết nối Qdrant và vẫn mất thời gian khởi tạo CPU/GPU. Có thể đặt `EMBEDDING_MODEL` thành đường dẫn tới thư mục model cục bộ. Nếu cache thiếu trọng số hoặc tokenizer không có từ vựng (chỉ còn token đặc biệt, thường do lần tải bị ngắt), lệnh báo lỗi và hướng dẫn chạy `uv run python -m ingestion.download_model`, không tự tải ngầm. Kiểm tra từ vựng chỉ xác nhận tokenizer có token ngoài token đặc biệt; nó không phát hiện file từ vựng sai hay hỏng.
 - `uv run python -m ingestion.index` nhúng 676 chunk bằng `BAAI/bge-m3` và nạp vào Qdrant; lần chạy thật in `points: 676` và `dimension: 1024`. Chạy lại lệnh này cho cùng kết quả (embedding được cache ở `.cache/embeddings/<model_key>.npz`).
+- `uv run python -m ingestion.index --hybrid` dựng collection dense + BM25 mà `--retriever sparse|hybrid` của `eval.run_eval` đọc, và giữ nguyên collection chỉ có dense.
 - `uv run python -m app.rag.search "<câu hỏi>"` in 5 chunk gần nhất kèm điểm cosine.
 - Với các lỗi vận hành được xử lý, `index` và `search` in lý do lên stderr, trả mã thoát 1 và không in gì ra stdout; lỗi cấu hình hoặc lần index bị ngắt có thể có thêm dòng chi tiết. Các lỗi gặp thường: Qdrant chưa chạy, collection chưa có hoặc đang rỗng (chạy `uv run python -m ingestion.index`), dữ liệu trong collection lệch schema chunk hiện tại (index lại), Qdrant trả HTTP 4xx (kiểm tra `QDRANT_URL`, quyền truy cập, `QDRANT_COLLECTION` và `EMBEDDING_MODEL`). Lỗi lập trình không bị che và vẫn có traceback.
 - `uv run pytest` (mặc định) bỏ qua test `integration`. `uv run pytest -m model` cần model, không cần Docker. `uv run pytest -m server` cần Qdrant đang chạy, không cần model.
@@ -91,8 +93,10 @@ Kết quả của `uv run python -m app.rag.search` trên Qdrant thật (collect
 ## Đánh giá truy xuất
 
 ```powershell
-uv run python -m eval.run_eval [--out eval/runs/<ngày>-<nhãn>.jsonl] [--label "<thay đổi>"]
+uv run python -m eval.run_eval [--out eval/runs/<ngày>-<nhãn>.jsonl] [--label "<thay đổi>"] [--retriever dense|sparse|hybrid] [--collection default|hybrid] [--promote] [--reference <run>]
 ```
+
+`--reference <run>` in thêm mục 7 của báo cáo: so sánh lần chạy này với run đó.
 
 Lệnh cần Qdrant đang chạy và model embedding trong cache cục bộ. Mỗi câu gọi `retrieve` một lần với `k = 10`; không gọi LLM.
 
@@ -117,6 +121,25 @@ Lệnh cần Qdrant đang chạy và model embedding trong cache cục bộ. M�
 - **Ca Điều 35/36 vẫn còn:** q001 xếp `d36:k2` trên `d35:k1` (hạng 2), q002 ("Người lao động muốn nghỉ việc phải báo trước bao nhiêu ngày?") để Điều 35 ở hạng 3.
 - **Câu nêu số Điều:** 2/12 trượt top 5 (q094 "Nội dung của Điều 140 là gì?", q095 "Điều 198 nói về vấn đề gì?"), vì vector không mang số Điều. Đây là việc của lọc metadata ở Tuần 4.
 - **Điểm top-1:** trong phạm vi (102 câu) thấp nhất 0,478, trung vị 0,704, cao nhất 0,811; ngoài phạm vi (25 câu) thấp nhất 0,305, trung vị 0,475, cao nhất 0,623. 12/25 câu ngoài phạm vi có điểm cao hơn câu trong phạm vi thấp nhất, nên một ngưỡng điểm đơn lẻ không tách được hai nhóm.
+
+### Tuần 4: hybrid và promotion số Điều (27/11/2026, bộ câu 577b8392afeb)
+
+R@1 và MRR@10 mức Điều. Luật chốt được ghi trước khi đo.
+
+| Run | direct R@1 | paraphrase R@1 | article_ref R@1 | Điều MRR@10 (90 câu) |
+|---|---|---|---|---|
+| (1) dense | 44/45 (0,978) | 32/45 (0,711) | 9/12 (0,750) | 0,907 |
+| (2) sparse BM25 | 42/45 (0,933) | 13/45 (0,289) | 9/12 (0,750) | 0,668 |
+| (3) hybrid RRF | 44/45 (0,978) | 23/45 (0,511) | 11/12 (0,917) | 0,815 |
+| (4) dense + promotion | 44/45 (0,978) | 32/45 (0,711) | 12/12 (1,000) | 0,907 |
+| (5) hybrid + promotion | 44/45 (0,978) | 23/45 (0,511) | 12/12 (1,000) | 0,815 |
+
+- **Hybrid không cải thiện R@1 câu đời thường mà làm giảm.** Trên 45 câu paraphrase: 32/45 → 23/45 (−9 câu; 0,711 → 0,511); b = 3, c = 12; p chính xác 0,035156, mid-p 0,021271. Kiểm định McNemar hai phía đã đăng ký (α = 0,05) có ý nghĩa theo chiều dense đúng nhiều hơn; C1 không đạt vì C1 cần b > c. Kết quả chỉ nói về cấu hình này (BM25 `vi-syl-bigram-v1`, RRF k = 60) trên bộ câu `577b8392afeb`.
+- Giải thích (thăm dò, chưa kiểm chứng): bộ câu được duyệt theo tiêu chí tránh trùng từ khóa với chunk đáp án (xem 'Cách tạo bộ câu'), một điều kiện bất lợi cho BM25. BM25 một mình (run 2) đạt R@1 direct 42/45 nhưng paraphrase 13/45.
+- **Promotion số Điều (độ phủ của parser):** run (4) so với run (1), article_ref R@1 9/12 → 12/12 (+3 câu; 0,750 → 1,000); hạng Khoản của q097 và q102 giữ nguyên 1 → 1; điều kiện (d) trên 115 câu còn lại đạt, 0 đổi chỗ. Parser được nghiệm thu trên chính văn bản 12 câu này; không kiểm định thống kê.
+- **Quyết định:** giữ dense, bật promotion số Điều. `search` và `ask` chưa dùng promotion; việc nối cấu hình là bước tiếp theo.
+
+Chi tiết, guard cho câu trực tiếp và danh sách câu tụt hạng: mục "Tuần 4: hybrid và promotion số Điều (pre-registration)" trong [eval/results.md](eval/results.md).
 
 ## Dữ liệu
 

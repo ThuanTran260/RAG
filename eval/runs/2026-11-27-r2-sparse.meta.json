@@ -1,0 +1,21 @@
+{
+  "questions_digest": "577b8392afeb",
+  "collection": "labor_law_vn__baai-bge-m3--d790e737453c__hybrid-v1",
+  "collection_metadata": {
+    "schema_version": 1,
+    "model_key": "baai-bge-m3--d790e737453c",
+    "chunks_sha256": "af7992c1004dc250f16b01d8d00d3686e6f7e3cb0ec7204f0eee970ee77eb265",
+    "points": 676,
+    "tokenizer_version": "vi-syl-bigram-v1",
+    "k1": 1.2,
+    "b": 0.75,
+    "avgdl": 171.89940828402368
+  },
+  "mode": "sparse",
+  "k": 10,
+  "rrf_k": null,
+  "promotion": false,
+  "device": "cuda:0",
+  "git_sha": "8a25e98fc08cef0408ca49e19dea96423b47653d",
+  "date": "2026-11-27"
+}
