@@ -10,6 +10,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 # Layout of the hybrid collection (vectors and metadata keys); bump it when that layout changes.
+# It also names the collection (__hybrid-v<N>), so a bump indexes a new one and keeps the old.
 HYBRID_SCHEMA_VERSION = 1
 
 

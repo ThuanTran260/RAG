@@ -233,7 +233,7 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         except UnexpectedResponse as error:
             print(rejection_message(error, searching=False), file=sys.stderr)
-            print("The collection may be incomplete.", file=sys.stderr)
+            print(f"The collection may be incomplete; rerun: {rerun}", file=sys.stderr)
             return 1
     finally:
         client.close()
