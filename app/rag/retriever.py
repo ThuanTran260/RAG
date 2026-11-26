@@ -1,18 +1,36 @@
-"""Dense retrieval: embed a question and return the nearest chunks with their scores."""
+"""Retrieval over one Qdrant collection: dense, sparse (BM25) or hybrid (RRF of the two).
+
+``score`` is the dense cosine similarity in every mode. Sparse and hybrid modes need a hybrid
+collection and query it at full depth, so that every chunk has a cosine and a dense rank.
+"""
 
 import unicodedata
 from collections.abc import Callable
+from dataclasses import dataclass
 from functools import lru_cache
-from typing import Protocol
+from typing import Literal, Protocol, get_args
 
 import numpy as np
 from pydantic import BaseModel, ValidationError
 from qdrant_client import QdrantClient
+from qdrant_client.models import ScoredPoint, SearchParams, SparseVector
 
 from app.core.config import get_settings
 from app.rag.embedder import Embedder, build_embedder
-from app.rag.store import connect, qdrant_errors
+from app.rag.fusion import reciprocal_rank_fusion
+from app.rag.sparse import query_vector
+from app.rag.store import (
+    HYBRID_INDEX_COMMAND,
+    INDEX_COMMAND,
+    SPARSE_VECTOR_NAME,
+    connect,
+    hybrid_collection_problem,
+    qdrant_errors,
+)
 from ingestion.models import Chunk
+
+RetrievalMode = Literal["dense", "sparse", "hybrid"]
+RETRIEVAL_MODES: tuple[RetrievalMode, ...] = get_args(RetrievalMode)
 
 
 class InvalidQueryError(ValueError):
@@ -20,16 +38,29 @@ class InvalidQueryError(ValueError):
 
 
 class CollectionNotIndexedError(RuntimeError):
-    """The Qdrant collection for the configured model does not exist or holds no points."""
+    """The Qdrant collection to search does not exist or holds no points."""
 
 
 class InvalidCollectionDataError(RuntimeError):
-    """A stored payload does not match the current Chunk schema."""
+    """The collection cannot be searched: its layout, metadata or a payload does not fit."""
 
 
 class RetrievedChunk(BaseModel):
     chunk: Chunk
-    score: float  # cosine similarity; higher is closer
+    score: float  # dense cosine similarity in every mode; higher is closer
+    fusion_score: float | None = None  # RRF score; None unless two rankings were fused
+    dense_rank: int | None = None  # 1-based, in the full dense ranking; None in dense mode
+    sparse_rank: int | None = None  # 1-based, among the BM25 hits; None without a hit
+
+
+@dataclass(frozen=True)
+class Ranking:
+    """One search before the cut to k."""
+
+    # Best first. Dense mode asks for k chunks only; sparse mode holds every BM25 hit and
+    # hybrid mode every chunk of the collection.
+    results: list[RetrievedChunk]
+    dense_vector: list[float]  # the query embedding, for further dense queries
 
 
 class QueryEmbedder(Protocol):
@@ -60,33 +91,118 @@ class LazyEmbedder:
 
 
 class Retriever:
-    def __init__(self, client: QdrantClient, embedder: QueryEmbedder, collection: str) -> None:
+    def __init__(
+        self,
+        client: QdrantClient,
+        embedder: QueryEmbedder,
+        collection: str,
+        mode: RetrievalMode = "dense",
+    ) -> None:
+        if mode not in RETRIEVAL_MODES:
+            raise ValueError(f"unknown retrieval mode: {mode!r}")
         self.client = client
         self.embedder = embedder
         self.collection = collection
+        self.mode = mode
+        # Named in error messages: sparse and hybrid modes need the hybrid build.
+        self._index_command = INDEX_COMMAND if mode == "dense" else HYBRID_INDEX_COMMAND
 
     def retrieve(self, query: str, k: int = 5) -> list[RetrievedChunk]:
+        return self.rank(query, k).results[:k]
+
+    def rank(self, query: str, k: int = 5) -> Ranking:
+        """Search for ``query`` and return the ranking before it is cut to ``k``."""
         query = prepare_query(query, k)
-        # One boundary around the collection check and the search: only Qdrant failures are
-        # translated; embedding errors and CollectionNotIndexedError pass through unchanged.
+        full_depth = self.mode != "dense"
+        # One boundary around every Qdrant call: only Qdrant failures are translated; embedding
+        # errors and the collection errors raised here pass through unchanged.
         with qdrant_errors():
             if not self.client.collection_exists(self.collection):
                 raise CollectionNotIndexedError(
                     f"collection {self.collection} does not exist. "
-                    "Create it with: uv run python -m ingestion.index"
+                    f"Create it with: {self._index_command}"
                 )
-            # The collection check comes first so that a missing index never loads the model.
-            vector = self.embedder.embed_query(query)
-            hits = self.client.query_points(
-                self.collection, query=vector.tolist(), limit=k, with_payload=True
-            ).points
-        # There are no filters or thresholds, so no hit at all means the collection has no points.
-        if not hits:
-            raise CollectionNotIndexedError(
-                f"collection {self.collection} is empty. "
-                "Fill it with: uv run python -m ingestion.index"
+            # The collection checks come first, so an unusable index never loads the model.
+            depth = self._point_count() if full_depth else k
+            vector = self.embedder.embed_query(query).tolist()
+            dense_hits = self._dense_hits(vector, depth, exact=full_depth)
+            # There are no filters or thresholds, so no hit at all means there are no points.
+            if not dense_hits:
+                raise CollectionNotIndexedError(
+                    f"collection {self.collection} is empty. Fill it with: {self._index_command}"
+                )
+            sparse_hits = self._sparse_hits(query, depth) if full_depth else []
+        if full_depth:
+            return Ranking(self._rank_with_bm25(dense_hits, sparse_hits), vector)
+        results = [
+            RetrievedChunk(chunk=self._to_chunk(hit.payload), score=hit.score) for hit in dense_hits
+        ]
+        return Ranking(results, vector)
+
+    def _point_count(self) -> int:
+        """Check that the collection can serve BM25 and return the depth of a full ranking."""
+        info = self.client.get_collection(self.collection)
+        problem = hybrid_collection_problem(info, self.collection)
+        if problem is not None:
+            raise InvalidCollectionDataError(problem)
+        return info.config.metadata["points"]
+
+    def _dense_hits(self, vector: list[float], limit: int, *, exact: bool) -> list[ScoredPoint]:
+        # A full ranking must hold every point, so it must not depend on the HNSW index.
+        extra = {"search_params": SearchParams(exact=True)} if exact else {}
+        return self.client.query_points(
+            self.collection, query=vector, limit=limit, with_payload=True, **extra
+        ).points
+
+    def _sparse_hits(self, query: str, depth: int) -> list[ScoredPoint]:
+        """Every chunk with a positive BM25 score, ids and scores only."""
+        terms = query_vector(query)
+        if not terms.indices:  # Qdrant is never sent an empty sparse vector
+            return []
+        hits = self.client.query_points(
+            self.collection,
+            query=SparseVector(indices=list(terms.indices), values=list(terms.values)),
+            using=SPARSE_VECTOR_NAME,
+            limit=depth,
+            with_payload=False,  # the dense hits carry the payloads
+        ).points
+        return [hit for hit in hits if hit.score > 0]
+
+    def _rank_with_bm25(
+        self, dense_hits: list[ScoredPoint], sparse_hits: list[ScoredPoint]
+    ) -> list[RetrievedChunk]:
+        """The BM25 hits in sparse mode; the fused ranking of every chunk in hybrid mode."""
+        scored = [(hit.id, self._to_chunk(hit.payload), hit.score) for hit in dense_hits]
+        # Equal cosines are ordered by chunk id, so no rank depends on the server's order.
+        scored.sort(key=lambda item: (-item[2], item[1].id))
+        by_point = {
+            point: RetrievedChunk(chunk=chunk, score=score, dense_rank=rank)
+            for rank, (point, chunk, score) in enumerate(scored, start=1)
+        }
+        if any(hit.id not in by_point for hit in sparse_hits):
+            raise InvalidCollectionDataError(
+                f"collection {self.collection} holds more points than its metadata says. "
+                f"Rebuild it with: {self._index_command}"
             )
-        return [RetrievedChunk(chunk=self._to_chunk(hit.payload), score=hit.score) for hit in hits]
+        # Equal BM25 scores are ordered by dense rank, for the same reason.
+        ordered = sorted(sparse_hits, key=lambda hit: (-hit.score, by_point[hit.id].dense_rank))
+        matched = [
+            by_point[hit.id].model_copy(update={"sparse_rank": rank})
+            for rank, hit in enumerate(ordered, start=1)
+        ]
+        if self.mode == "sparse":
+            return matched  # no dense fallback: this mode shows BM25 hits only
+        dense = list(by_point.values())
+        if not matched:
+            return dense  # nothing to fuse, so the dense ranking stands
+        by_id = {result.chunk.id: result for result in dense}
+        fused = reciprocal_rank_fusion(list(by_id), [result.chunk.id for result in matched])
+        return [
+            by_id[item.key].model_copy(
+                update={"fusion_score": item.score, "sparse_rank": item.sparse_rank}
+            )
+            for item in fused
+        ]
 
     def _to_chunk(self, payload: dict | None) -> Chunk:
         try:
@@ -95,7 +211,7 @@ class Retriever:
             # Name no field value: the payload is stored data, not something to echo.
             raise InvalidCollectionDataError(
                 f"a payload in collection {self.collection} is incompatible with the current "
-                "chunk schema. Rebuild it with: uv run python -m ingestion.index"
+                f"chunk schema. Rebuild it with: {self._index_command}"
             ) from error
 
 
