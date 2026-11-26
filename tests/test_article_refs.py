@@ -272,6 +272,46 @@ def test_a_long_run_of_whitespace_is_read_quickly(gap):
     assert time.perf_counter() - start < 1
 
 
+# A question has no length limit. Each shape repeats sub-references that no document name follows,
+# so a pattern that can split one space two ways retries every split.
+@pytest.mark.parametrize(
+    ("head", "unit", "tail", "articles"),
+    [
+        ("Điều 1", " khoản 1", " x", {1}),
+        ("Điều 1 ", "khoản 1 điểm a ", "", {1}),
+        ("Điều 1", " các khoản 1, 2 và 3", "", {1}),
+        ("Điều 1", " khoản 1", " của", {1}),
+        ("Điều 1", " khoản 1", " x Điều 2", {1, 2}),
+        ("Điều 1", " khoản 1 và 2", " x", {1}),
+        ("Điều 1", " khoản 1 điểm a", " x Điều 2", {1, 2}),
+    ],
+)
+def test_a_long_run_of_sub_references_is_read_quickly(head, unit, tail, articles):
+    text = head + unit * (10_000 // len(unit) + 1) + tail
+    assert len(text) >= 10_000
+    start = time.perf_counter()
+
+    assert article_refs(text) == articles
+
+    assert time.perf_counter() - start < 1
+
+
+@pytest.mark.parametrize(
+    ("text", "articles"),
+    [
+        ("Điều " + "1" * 5000, set()),
+        ("Điều 35, " + "1" * 5000, {35}),
+        ("Điều " + "0" * 5000 + "35", {35}),
+        ("Điều 0035", {35}),
+        ("Điều 35, " + "1" * 5000 + "a", {35}),
+        ("Điều 35, " + "0" * 5000 + "35a", set()),  # "35a" drops 35, however it is written
+    ],
+    ids=["too-long", "list-with-too-long", "long-zeros", "zeros", "long-with-letter", "same-value"],
+)
+def test_a_long_digit_run_is_only_a_large_number(text, articles):
+    assert article_refs(text) == articles
+
+
 def test_text_without_a_mention_gives_nothing():
     assert article_refs("") == set()
     assert article_refs("Người lao động được nghỉ mấy ngày?") == set()

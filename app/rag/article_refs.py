@@ -14,10 +14,14 @@ from ingestion.documents import LABOUR_CODE
 QUANTITY_WORDS = ("chút", "tí", "tý", "tị", "xíu", "tẹo", "lát")
 _QUANTITY = re.compile(rf"\s+(?:{'|'.join(QUANTITY_WORDS)})(?!\w)", re.IGNORECASE)
 _NUMBER = re.compile(r"\d+")
+_MAX_DIGITS = len(str(LABOUR_CODE.expected_articles))
 
 # "khoản 1", "điểm a, b và c", "các khoản 2 và 3"
 _ITEM = r"(?:\d+[a-zđ]?|[a-zđ])(?!\w)"
 _SUBREF = rf"(?:các\s+)?(?:điểm|khoản)\s+{_ITEM}(?:\s*(?:,|và|hoặc)\s*{_ITEM})*"
+# The sub-references after a number, with or without commas. The comma is inside the optional group
+# so that one part of the pattern takes each space: that keeps a failing match linear, not 2^n.
+_SUBREFS = rf"(?:\s*(?:,\s*)?{_SUBREF})*"
 
 # All that may stand between two mentions that share one document name, as in
 # "Điều 42 và Điều 43 của Bộ luật này".
@@ -30,7 +34,7 @@ _JOINER = re.compile(
 # All that may stand between a number and the name of its document: a name any further away does
 # not belong to the number.
 _BEFORE_NAME = re.compile(
-    rf"(?:\s*,?\s*{_SUBREF})*"
+    rf"{_SUBREFS}"
     r"(?:\s*[,:(]|\s+(?:của|trong|tại|thuộc|theo|ở|bên|được|quy\s+định)(?!\w))*"
     r"\s*",
     re.IGNORECASE,
@@ -60,7 +64,7 @@ _LEGAL_DOCUMENT = re.compile(
 # A contract or a company's own rules. Only "của" or "trong" ties them to the number: without
 # one, "Điều 21 hợp đồng lao động gồm những gì" asks about the topic of the article.
 _PRIVATE_DOCUMENT = re.compile(
-    rf"(?:\s*,?\s*{_SUBREF})*\s+(?:của|trong)\s+(?:(?:cái|bản)\s+)?"
+    rf"{_SUBREFS}\s+(?:của|trong)\s+(?:(?:cái|bản)\s+)?"
     r"(?:hợp\s+đồng|nội\s+quy|quy\s+chế|thỏa\s+ước|thoả\s+ước|điều\s+lệ)(?!\w)",
     re.IGNORECASE,
 )
@@ -85,13 +89,24 @@ def article_refs(text: str) -> set[int]:
 
 def _numbers(text: str, match: re.Match[str]) -> set[int]:
     """The article numbers of one mention, without those that cannot be an article of the Code."""
-    numbers = article_mentions(match.group(0))
+    numbers = article_mentions(_NUMBER.sub(_bounded, match.group(0)))
     for digits in _NUMBER.finditer(text, match.start(1), match.end(1)):
         end = digits.end()
         # "5a" is not article 5, and "1 chút" is a quantity.
         if text[end : end + 1].isalpha() or _QUANTITY.match(text, end):
-            numbers.discard(int(digits.group()))
+            numbers.discard(int(_bounded(digits)))
     return {number for number in numbers if 1 <= number <= LABOUR_CODE.expected_articles}
+
+
+def _bounded(run: re.Match[str]) -> str:
+    """The digit run without its leading zeros, or "0" when it is too long to be an article.
+
+    int() raises on a run of more than 4300 digits, zeros included, and a user can type one.
+    """
+    digits = run.group()
+    # int() per character also reads the zeros of other scripts, which \d matches too.
+    start = next((i for i, digit in enumerate(digits) if int(digit)), len(digits))
+    return digits[start:] if 0 < len(digits) - start <= _MAX_DIGITS else "0"
 
 
 def _names_another_document(text: str, position: int) -> bool:
