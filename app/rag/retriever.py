@@ -95,6 +95,11 @@ class LazyEmbedder:
         self._factory = factory
         self._embedder: Embedder | None = None
 
+    @property
+    def device(self) -> str | None:
+        """Where the model runs; None until it is built."""
+        return getattr(self._embedder, "device", None)
+
     def embed_query(self, text: str) -> np.ndarray:
         if self._embedder is None:
             self._embedder = self._factory()

@@ -356,3 +356,12 @@ def test_build_embedder_uses_the_settings(monkeypatch):
         "device": "cpu",
         "batch_size": 4,
     }
+
+
+def test_device_is_where_the_loaded_model_runs(stub_model):
+    class Device:  # stands in for torch.device
+        def __str__(self):
+            return "cuda:0"
+
+    stub_model.device = Device()
+    assert SentenceTransformerEmbedder("some/model").device == "cuda:0"

@@ -145,6 +145,11 @@ class SentenceTransformerEmbedder:
             raise ValueError(f"cannot determine the embedding dimension of {model_name}")
         self.dimension = dimension
 
+    @property
+    def device(self) -> str:
+        """Where the loaded model runs, such as cuda:0."""
+        return str(self._model.device)
+
     def embed_documents(self, texts: list[str]) -> np.ndarray:
         if not texts:
             return np.zeros((0, self.dimension), dtype=np.float32)

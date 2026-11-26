@@ -413,6 +413,16 @@ def test_search_cli_reports_a_missing_model_cache_without_a_traceback(indexed, m
     assert "Traceback" not in captured.err
 
 
+def test_the_lazy_embedder_has_no_device_until_the_model_is_built(fake_embedder):
+    built = []
+    fake_embedder.device = "cuda:0"
+    lazy = retriever_module.LazyEmbedder(lambda: built.append(1) or fake_embedder)
+
+    assert (lazy.device, built) == (None, [])  # asking for the device builds nothing
+    lazy.embed_query("thử việc")
+    assert (lazy.device, built) == ("cuda:0", [1])
+
+
 # --- sparse and hybrid modes ------------------------------------------------------
 
 # Questions outside the evaluation set (spec §5.8): no question there has Điều 77, 92, 100 or
