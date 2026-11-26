@@ -138,5 +138,4 @@ Thăm dò, không dùng để quyết định — run (2) sparse so với run (1
 
 ### 6. Tiếp theo
 
-- T7 nối cấu hình đã chốt (dense trên collection cũ, bật promotion số Điều) vào `search` và `ask`.
 - T7 đã xong trong commit `feat: ship dense retrieval with article promotion as the default (T7)`: mặc định là dense trên collection chỉ có dense, bật promotion số Điều.

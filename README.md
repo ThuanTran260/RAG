@@ -101,7 +101,7 @@ uv run python -m eval.run_eval [--out eval/runs/<ngày>-<nhãn>.jsonl] [--label 
 
 Không có cờ truy xuất (`--retriever`, `--collection`, `--promote`), `run_eval` đo đúng cấu hình `search` và `ask` đang dùng (mặc định có promotion, nên cũng gọi thêm `retrieve` dense cho mục 4); có bất kỳ cờ nào trong ba cờ đó thì cờ thiếu nghĩa là dense, collection mà chế độ đó cần và promotion tắt.
 
-Lệnh cần Qdrant đang chạy và model embedding trong cache cục bộ. Mỗi câu gọi `retrieve` một lần với `k = 10`; với `--retriever sparse|hybrid` hoặc `--promote`, mỗi câu gọi thêm `retrieve` dense một lần để lấy điểm cosine top-1 cho mục 4 của báo cáo. Không gọi LLM.
+Lệnh cần Qdrant đang chạy và model embedding trong cache cục bộ. Mỗi câu gọi `retrieve` một lần với `k = 10`; khi cấu hình được đo là sparse, hybrid hoặc có promotion, mỗi câu gọi thêm `retrieve` dense một lần để lấy điểm cosine top-1 cho mục 4 của báo cáo. Không gọi LLM.
 
 - **Bộ câu** `eval/questions.jsonl` (127 câu): 45 cặp câu trực tiếp / câu đời thường có cùng đáp án, 12 câu nêu số Điều (`article_ref`), 25 câu ngoài phạm vi. Đáp án là danh sách id chunk mức Khoản; `gold_articles` lưu riêng để mức Điều vẫn tính được khi đổi cách chunk.
 - **recall@k (viết tắt R@k)** ở đây là hit rate: tỷ lệ câu hỏi có kết quả trúng đầu tiên nằm trong top k (`recall_at` trong `eval/metrics.py`). Đây không phải recall cổ điển tính trên mọi chunk đáp án.

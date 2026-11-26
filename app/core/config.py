@@ -72,7 +72,8 @@ class Settings(BaseSettings):
         # retrieval_mode is absent from info.data when it was rejected itself.
         if value and info.data.get("retrieval_mode") == "sparse":
             raise ValueError(
-                "RETRIEVAL_MODE=sparse does not work with ARTICLE_PROMOTION on (the default), "
+                "RETRIEVAL_MODE=sparse does not work with ARTICLE_PROMOTION on (it is on unless "
+                "set to false), "
                 "because sparse mode never promotes. Set ARTICLE_PROMOTION=false."
             )
         return value
