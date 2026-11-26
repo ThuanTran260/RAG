@@ -29,6 +29,7 @@ uv run pytest -m server
 - `uv run python -m ingestion.index` nhúng 676 chunk bằng `BAAI/bge-m3` và nạp vào Qdrant; lần chạy thật in `points: 676` và `dimension: 1024`. Chạy lại lệnh này cho cùng kết quả (embedding được cache ở `.cache/embeddings/<model_key>.npz`).
 - `uv run python -m ingestion.index --hybrid` dựng collection dense + BM25 mà `--retriever sparse|hybrid` của `eval.run_eval` đọc, và giữ nguyên collection chỉ có dense.
 - `uv run python -m app.rag.search "<câu hỏi>"` in 5 chunk gần nhất kèm điểm cosine.
+- `search` và `ask` mặc định truy xuất dense kèm promotion số Điều: câu hỏi nêu số Điều của Bộ luật này được đưa chunk của Điều đó lên đầu (tối đa 3 chunk, không đưa khi `-k` ≤ 2), nên khi đó thứ tự không theo điểm. Đổi bằng biến `RETRIEVAL_MODE` (`dense`, `sparse`, `hybrid`) và `ARTICLE_PROMOTION` (`true`, `false`; `sparse` cần `false`); `sparse` và `hybrid` cần chạy `uv run python -m ingestion.index --hybrid` trước.
 - Với các lỗi vận hành được xử lý, `index` và `search` in lý do lên stderr, trả mã thoát 1 và không in gì ra stdout; lỗi cấu hình hoặc lần index bị ngắt có thể có thêm dòng chi tiết. Các lỗi gặp thường: Qdrant chưa chạy, collection chưa có hoặc đang rỗng (chạy `uv run python -m ingestion.index`), dữ liệu trong collection lệch schema chunk hiện tại (index lại), Qdrant trả HTTP 4xx (kiểm tra `QDRANT_URL`, quyền truy cập, `QDRANT_COLLECTION` và `EMBEDDING_MODEL`). Lỗi lập trình không bị che và vẫn có traceback.
 - `uv run pytest` (mặc định) bỏ qua test `integration`. `uv run pytest -m model` cần model, không cần Docker. `uv run pytest -m server` cần Qdrant đang chạy, không cần model.
 - Dữ liệu Qdrant nằm trong named volume `qdrant_storage`: sau `docker compose down` (không `-v`) rồi `docker compose up -d qdrant`, collection vẫn còn 676 điểm. Không dùng `docker compose down -v` nếu muốn giữ dữ liệu.
@@ -98,6 +99,8 @@ uv run python -m eval.run_eval [--out eval/runs/<ngày>-<nhãn>.jsonl] [--label 
 
 `--reference <run>` in thêm mục 7 của báo cáo: so sánh lần chạy này với run đó.
 
+Không có cờ truy xuất (`--retriever`, `--collection`, `--promote`), `run_eval` đo đúng cấu hình `search` và `ask` đang dùng (mặc định có promotion, nên cũng gọi thêm `retrieve` dense cho mục 4); có bất kỳ cờ nào trong ba cờ đó thì cờ thiếu nghĩa là dense, collection mà chế độ đó cần và promotion tắt.
+
 Lệnh cần Qdrant đang chạy và model embedding trong cache cục bộ. Mỗi câu gọi `retrieve` một lần với `k = 10`; với `--retriever sparse|hybrid` hoặc `--promote`, mỗi câu gọi thêm `retrieve` dense một lần để lấy điểm cosine top-1 cho mục 4 của báo cáo. Không gọi LLM.
 
 - **Bộ câu** `eval/questions.jsonl` (127 câu): 45 cặp câu trực tiếp / câu đời thường có cùng đáp án, 12 câu nêu số Điều (`article_ref`), 25 câu ngoài phạm vi. Đáp án là danh sách id chunk mức Khoản; `gold_articles` lưu riêng để mức Điều vẫn tính được khi đổi cách chunk.
@@ -137,7 +140,7 @@ R@1 và MRR@10 mức Điều. Luật chốt được ghi trước khi đo.
 - **Hybrid không cải thiện R@1 câu đời thường mà làm giảm.** Trên 45 câu paraphrase: 32/45 → 23/45 (−9 câu; 0,711 → 0,511); b = 3, c = 12; p chính xác 0,035156, mid-p 0,021271. Kiểm định McNemar hai phía đã đăng ký (α = 0,05) có ý nghĩa theo chiều dense đúng nhiều hơn; C1 không đạt vì C1 cần b > c. Kết quả chỉ nói về cấu hình này (BM25 `vi-syl-bigram-v1`, RRF k = 60) trên bộ câu `577b8392afeb`.
 - Giải thích (thăm dò, chưa kiểm chứng): câu đời thường trùng ít từ với chunk đáp án hơn hẳn câu trực tiếp (tỷ lệ âm tiết của câu hỏi có trong chunk đáp án: 0,36 so với 0,87; [spec Tuần 4](docs/superpowers/specs/2026-11-26-week4-hybrid-design.md), mục 4), một điều kiện bất lợi cho BM25. BM25 một mình (run 2) đạt R@1 direct 42/45 nhưng paraphrase 13/45.
 - **Promotion số Điều (độ phủ của parser):** run (4) so với run (1), article_ref R@1 9/12 → 12/12 (+3 câu; 0,750 → 1,000); hạng Khoản của q097 và q102 giữ nguyên 1 → 1; điều kiện (d) trên 115 câu còn lại đạt, 0 đổi chỗ. Parser được nghiệm thu trên chính văn bản bộ câu (12 câu article_ref cho đúng Điều đáp án, 115 câu còn lại cho tập rỗng), nên đây là độ phủ trên câu đã thấy, không phải ước lượng cho câu mới; không kiểm định thống kê.
-- **Quyết định:** giữ dense, bật promotion số Điều. `search` và `ask` chưa dùng promotion; việc nối cấu hình là bước tiếp theo.
+- **Quyết định:** giữ dense, bật promotion số Điều. T7 đã nối cấu hình này vào `search` và `ask` làm mặc định.
 
 Chi tiết, guard cho câu trực tiếp và danh sách câu tụt hạng: mục "Tuần 4: hybrid và promotion số Điều (pre-registration)" trong [eval/results.md](eval/results.md).
 

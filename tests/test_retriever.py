@@ -318,6 +318,7 @@ def test_search_cli_reports_an_unreachable_server(monkeypatch, capsys):
     assert captured.out == ""
 
 
+@pytest.mark.filterwarnings("ignore:Local mode performs exact:UserWarning")  # promotion query
 def test_search_cli_reports_a_server_that_fails_after_the_retriever_was_cached(
     indexed, sample_chunks, monkeypatch, capsys
 ):
@@ -573,10 +574,10 @@ def test_an_unknown_mode_is_rejected(client, fake_embedder):
         Retriever(client, fake_embedder, "any", mode="bm25")
 
 
-def test_default_retriever_stays_dense_on_the_old_collection(wired):
+def test_default_retriever_ships_dense_with_promotion_on_the_old_collection(wired):
     retriever = default_retriever()
 
-    assert retriever.mode == "dense"
+    assert (retriever.mode, retriever.promote) == ("dense", True)
     assert retriever.collection == wired.settings.collection_name
 
 
@@ -949,9 +950,8 @@ def test_the_promotion_questions_stay_outside_the_evaluation_set():
     assert not gold & {*PROMOTION_ARTICLES, 24, 32}
 
 
-def test_promotion_is_off_unless_asked_for(promoting, client, fake_embedder, wired):
+def test_promotion_is_off_unless_asked_for(promoting, client, fake_embedder):
     assert Retriever(client, fake_embedder, "any").promote is False
-    assert default_retriever().promote is False
 
     retriever, scripted_client = promoting("dense", promote=False)
 
@@ -1182,3 +1182,110 @@ def test_the_parser_and_the_retriever_import_in_either_order(modules):
     )
 
     assert done.returncode == 0, done.stderr
+
+
+# --- the configuration the settings ship ------------------------------------------
+
+NAMED_24 = "Điều 24 quy định gì"  # the fixture of spec §7.4
+UNNAMED_24 = "Bản thỏa thuận thử việc gồm những gì?"
+D24 = [f"45-2019-QH14:d24:k{clause}" for clause in (1, 2, 3)]
+# Khoản 2 of Điều 24 is the best of its clauses, and all three are below the top 3.
+SHIPPED_ORDER = [*A[:4], D24[1], D24[0], D24[2]]
+SHIPPED_DENSE = [(name, round(0.9 - 0.01 * place, 2)) for place, name in enumerate(SHIPPED_ORDER)]
+
+
+@pytest.fixture
+def shipped(monkeypatch, all_chunks, fake_embedder):
+    """retrieve() as search and ask call it: settings from the environment, a fake client."""
+    chunks = [chunk for chunk in all_chunks if chunk.article in (24, 154)]
+    # BM25 finds khoản 3 only, which the fusion then puts first.
+    client = ScriptedClient(chunks, dense=SHIPPED_DENSE, sparse=[(D24[2], 9.0)])
+    monkeypatch.setattr(retriever_module, "connect", lambda _settings: client)
+    monkeypatch.setattr(retriever_module, "build_embedder", lambda _settings: fake_embedder)
+    return client
+
+
+def asked_collections(client):
+    return {arguments["collection"] for _method, arguments in client.calls}
+
+
+def article_filters(client):
+    """The article condition of every filtered query."""
+    return [
+        arguments["query_filter"].must[0].match
+        for arguments in client.queries()
+        if "query_filter" in arguments
+    ]
+
+
+def test_the_shipped_test_questions_stay_outside_the_evaluation_set():
+    questions = load_questions(REPO_ROOT / "eval" / "questions.jsonl")
+    asked = {question.question.casefold() for question in questions}
+
+    assert not asked & {NAMED_24.casefold(), UNNAMED_24.casefold()}
+
+
+def test_by_default_retrieve_promotes_on_the_dense_only_collection(shipped):
+    results = retrieve(NAMED_24, k=5)
+
+    assert asked_collections(shipped) == {Settings().collection_name}
+    assert article_filters(shipped) == [MatchAny(any=[24])]
+    assert ids(results) == [D24[1], D24[0], D24[2], A[0], A[1]]
+
+
+# mode, promotion, hybrid collection, the top 3 for the question that names Điều 24
+SHIPPED_CONFIGURATIONS = [
+    ("dense", "true", False, [D24[1], A[0], A[1]]),
+    ("dense", "false", False, [A[0], A[1], A[2]]),
+    # The fusion already puts khoản 3 first; promotion takes the one free slot for it.
+    ("hybrid", "true", True, [D24[2], A[0], A[1]]),
+    ("hybrid", "false", True, [D24[2], A[0], A[1]]),
+    ("sparse", "false", True, [D24[2]]),
+]
+
+
+@pytest.mark.parametrize(("mode", "promotion", "hybrid", "top"), SHIPPED_CONFIGURATIONS)
+def test_the_settings_choose_what_retrieve_queries(
+    shipped, monkeypatch, mode, promotion, hybrid, top
+):
+    monkeypatch.setenv("RETRIEVAL_MODE", mode)
+    monkeypatch.setenv("ARTICLE_PROMOTION", promotion)
+    settings = Settings()
+    collection = settings.hybrid_collection_name if hybrid else settings.collection_name
+
+    results = retrieve(NAMED_24, k=3)
+
+    assert asked_collections(shipped) == {collection}
+    sparse_queries = [q for q in shipped.queries() if isinstance(q["query"], SparseVector)]
+    assert len(sparse_queries) == (0 if mode == "dense" else 1)
+    # Only dense mode asks again: hybrid mode promotes from the ranking it already has.
+    expected = [MatchAny(any=[24])] if (mode, promotion) == ("dense", "true") else []
+    assert article_filters(shipped) == expected
+    assert ids(results) == top
+
+
+@pytest.mark.parametrize(
+    ("promotion", "named_in_top_3"),
+    [("true", [D24[2], D24[1], D24[0]]), ("false", [D24[2]])],
+)
+def test_the_promotion_setting_reorders_a_hybrid_ranking(
+    shipped, monkeypatch, promotion, named_in_top_3
+):
+    monkeypatch.setenv("RETRIEVAL_MODE", "hybrid")
+    monkeypatch.setenv("ARTICLE_PROMOTION", promotion)
+
+    results = retrieve(NAMED_24, k=5)
+
+    assert [name for name in ids(results)[:3] if name in D24] == named_in_top_3
+    assert article_filters(shipped) == []
+
+
+@pytest.mark.parametrize("mode", ["dense", "hybrid"])
+def test_no_promotion_query_for_a_question_that_names_no_article(shipped, monkeypatch, mode):
+    monkeypatch.setenv("RETRIEVAL_MODE", mode)
+
+    retrieve(UNNAMED_24, k=5)
+
+    assert default_retriever().promote is True
+    assert article_filters(shipped) == []
+    assert len(shipped.queries()) == (1 if mode == "dense" else 2)

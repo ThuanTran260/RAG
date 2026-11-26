@@ -5,13 +5,15 @@ collection and query it at full depth, so that every chunk has a cosine and a de
 
 With ``promote`` on, dense and hybrid modes move chunks of the articles the question names to the
 top of the results, so the results are then no longer sorted by ``score``.
+
+``retrieve()``, which search and ask call, takes the mode and ``promote`` from the settings.
 """
 
 import unicodedata
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Literal, Protocol, get_args
+from typing import Protocol, get_args
 
 import numpy as np
 from pydantic import BaseModel, ValidationError
@@ -25,7 +27,7 @@ from qdrant_client.models import (
     SparseVector,
 )
 
-from app.core.config import get_settings
+from app.core.config import RetrievalMode, get_settings
 from app.rag.embedder import Embedder, build_embedder
 from app.rag.fusion import reciprocal_rank_fusion
 from app.rag.sparse import query_vector
@@ -39,7 +41,6 @@ from app.rag.store import (
 )
 from ingestion.models import Chunk
 
-RetrievalMode = Literal["dense", "sparse", "hybrid"]
 RETRIEVAL_MODES: tuple[RetrievalMode, ...] = get_args(RetrievalMode)
 MAX_PROMOTED = 3  # chunks moved up per question, across all the articles it names
 
@@ -281,11 +282,14 @@ class Retriever:
 
 @lru_cache
 def default_retriever() -> Retriever:
+    """The retriever of search and ask, configured by the settings."""
     settings = get_settings()
     return Retriever(
         connect(settings),
         LazyEmbedder(lambda: build_embedder(settings)),
-        settings.collection_name,
+        settings.retrieval_collection_name,
+        settings.retrieval_mode,
+        promote=settings.article_promotion,
     )
 
 

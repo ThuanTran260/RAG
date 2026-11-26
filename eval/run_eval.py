@@ -1,10 +1,11 @@
 """Retrieval evaluation: uv run python -m eval.run_eval [--questions PATH] [--out PATH] ...
 
 Runs every question through one retriever once (k = 10), then prints a report and one line for
-eval/results.md. With no retrieval flag that is default_retriever(), the dense baseline;
---retriever, --collection and --promote pick another configuration. --out saves the run file and
-its .meta.json, and --reference compares this run with a saved one (Week 4 spec §5). The numbers
-use a decimal comma (0,713), like README.md.
+eval/results.md. With no retrieval flag that is default_retriever(), which search and ask use and
+the settings configure. With any of --retriever, --collection and --promote the flags alone choose:
+a missing one means dense, the collection the mode implies, and promotion off. --out saves the run
+file and its .meta.json, and --reference compares this run with a saved one (Week 4 spec §5). The
+numbers use a decimal comma (0,713), like README.md.
 """
 
 import argparse
@@ -23,7 +24,7 @@ from typing import Protocol
 from pydantic import BaseModel, ValidationError
 from qdrant_client.http.exceptions import UnexpectedResponse
 
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 from app.rag.article_refs import article_refs
 from app.rag.embedder import EmbeddingModelUnavailableError
 from app.rag.fusion import RRF_K
@@ -927,7 +928,7 @@ class RunConfig:
 
     @property
     def label(self) -> str:
-        """The default text of the results.md row."""
+        """The default text of the results.md row, which names the configuration measured."""
         if self.mode == "dense" and not self.hybrid_collection and not self.promotion:
             return "dense baseline"
         label = self.mode + (" + promotion" if self.promotion else "")
@@ -937,8 +938,13 @@ class RunConfig:
         return label
 
 
-def _run_config(args: argparse.Namespace, parser: argparse.ArgumentParser) -> RunConfig:
-    """Resolve the retrieval flags; parser.error() exits on a combination that cannot work."""
+def _run_config(args: argparse.Namespace, parser: argparse.ArgumentParser) -> RunConfig | None:
+    """Resolve the retrieval flags; None without one, when the settings decide.
+
+    parser.error() exits on a combination that cannot work.
+    """
+    if args.retriever is None and args.collection is None and not args.promote:
+        return None
     mode = args.retriever or "dense"
     collection = args.collection or ("default" if mode == "dense" else "hybrid")
     if mode != "dense" and collection == "default":
@@ -948,8 +954,13 @@ def _run_config(args: argparse.Namespace, parser: argparse.ArgumentParser) -> Ru
         )
     if args.promote and mode == "sparse":
         parser.error("--promote has no effect with --retriever sparse; use dense or hybrid")
-    flagged = args.retriever is not None or args.collection is not None or args.promote
-    return RunConfig(flagged, mode, collection == "hybrid", args.promote)
+    return RunConfig(True, mode, collection == "hybrid", args.promote)
+
+
+def _shipped_config(settings: Settings) -> RunConfig:
+    """What default_retriever() builds from these settings: the run without a retrieval flag."""
+    mode = settings.retrieval_mode
+    return RunConfig(False, mode, mode != "dense", settings.article_promotion)
 
 
 def _retrievers(
@@ -960,11 +971,11 @@ def _retrievers(
     All of them share the client and the embedder of the default retriever, so the model loads once.
     """
     base = default_retriever()
-    if not config.flagged:
-        return base, base, None
-    measured = Retriever(
-        base.client, base.embedder, collection, config.mode, promote=config.promotion
-    )
+    measured = base
+    if config.flagged:
+        measured = Retriever(
+            base.client, base.embedder, collection, config.mode, promote=config.promotion
+        )
     probe = None
     if config.mode != "dense" or config.promotion:
         probe = Retriever(base.client, base.embedder, collection)
@@ -1008,7 +1019,7 @@ def _run_meta(config: RunConfig, collection: str, base: Retriever, digest: str, 
     }
 
 
-def _run(args: argparse.Namespace, config: RunConfig) -> int:
+def _run(args: argparse.Namespace, flags: RunConfig | None) -> int:
     questions = load_questions(args.questions)
     if not questions:
         print(f"no questions in {args.questions}", file=sys.stderr)
@@ -1031,6 +1042,7 @@ def _run(args: argparse.Namespace, config: RunConfig) -> int:
         reference = load_reference(args.reference)
         _check_reference(reference, questions, digest)
     settings = get_settings()
+    config = flags or _shipped_config(settings)
     collection = (
         settings.hybrid_collection_name if config.hybrid_collection else settings.collection_name
     )
@@ -1104,12 +1116,15 @@ def main(argv: list[str] | None = None) -> int:
         "--out", type=Path, help="write per-question results (JSONL) and a .meta.json beside it"
     )
     parser.add_argument("--reference", type=Path, help="run file to compare this run with")
-    parser.add_argument("--label", help="text for the results.md row (default: from the flags)")
+    parser.add_argument(
+        "--label",
+        help="text for the results.md row (default: names the configuration measured)",
+    )
     args = parser.parse_args(argv)
-    config = _run_config(args, parser)
+    flags = _run_config(args, parser)
 
     try:
-        return _run(args, config)
+        return _run(args, flags)
     except (
         QuestionFileError,
         ReferenceRunError,

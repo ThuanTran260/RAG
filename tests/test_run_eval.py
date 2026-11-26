@@ -10,13 +10,14 @@ import pytest
 from qdrant_client import QdrantClient
 
 from app.core.config import Settings
-from app.rag.retriever import LazyEmbedder, RetrievedChunk, Retriever
+from app.rag import retriever as retriever_module
+from app.rag.retriever import LazyEmbedder, RetrievedChunk, Retriever, default_retriever
 from app.rag.store import QdrantUnavailableError
 from eval import run_eval
 from eval.questions import Question, load_questions, question_to_json
 from eval.stats import clopper_pearson, mcnemar
 from ingestion.documents import REPO_ROOT
-from ingestion.index import index_hybrid_chunks
+from ingestion.index import index_chunks, index_hybrid_chunks
 
 PREFIX = "45-2019-QH14:"
 DIGEST = "abc123def456"
@@ -80,7 +81,13 @@ MAPPING = {
 
 
 @pytest.fixture
-def fake(all_chunks):
+def promotion_off(monkeypatch):
+    """A run without flags then measures default_retriever() alone and needs no dense probe."""
+    monkeypatch.setenv("ARTICLE_PROMOTION", "false")
+
+
+@pytest.fixture
+def fake(all_chunks, promotion_off):
     return FakeRetriever(MAPPING, all_chunks)
 
 
@@ -326,7 +333,9 @@ def test_main_invalid_questions_returns_1_with_line(tmp_path, monkeypatch, capsy
     assert fake.calls == []
 
 
-def test_main_failure_mid_run_leaves_no_out_file(tmp_path, monkeypatch, capsys, all_chunks):
+def test_main_failure_mid_run_leaves_no_out_file(
+    tmp_path, monkeypatch, capsys, all_chunks, promotion_off
+):
     failing = FakeRetriever(MAPPING, all_chunks, fail_after=1)
     monkeypatch.setattr(run_eval, "default_retriever", lambda: failing)
     path = write_questions(tmp_path / "q.jsonl", QUESTIONS)
@@ -390,7 +399,7 @@ def test_run_eval_against_live_qdrant(tmp_path, capsys):
         "## 5. Bảng cặp",
     ):
         assert heading in out
-    assert "dense baseline" in out
+    assert "dense + promotion" in out
 
 
 # --- retrieval configurations ------------------------------------------------------
@@ -522,7 +531,9 @@ def label_of(output):
     return output.strip().splitlines()[-1].split("|")[2].strip()
 
 
-def test_no_flag_run_uses_only_the_default_retriever(monkeypatch, capsys, fake, questions_path):
+def test_without_promotion_a_run_without_flags_uses_only_the_default_retriever(
+    monkeypatch, capsys, fake, questions_path
+):
     built = []
     monkeypatch.setattr(run_eval, "default_retriever", lambda: built.append(1) or fake)
     monkeypatch.setattr(run_eval, "Retriever", lambda *a, **k: pytest.fail("a Retriever was built"))
@@ -729,7 +740,7 @@ def head_commit():
     return done.stdout.strip()
 
 
-def test_the_meta_file_of_a_default_run(monkeypatch, tmp_path, fake, questions_path):
+def test_the_meta_file_of_a_run_without_promotion(monkeypatch, tmp_path, fake, questions_path):
     fake.embedder = SimpleNamespace(device="cpu")
     monkeypatch.setattr(run_eval, "default_retriever", lambda: fake)
     out = tmp_path / "run.jsonl"
@@ -849,6 +860,180 @@ def test_a_hybrid_run_through_the_real_retriever(
     best = [dense.retrieve(q.question, 10)[0].score for q in QUESTIONS if q.group != "out_of_scope"]
     assert f"Trong phạm vi: n=5, thấp nhất {run_eval.format_score(min(best))}" in captured.out
     client.close()
+
+
+# --- the shipped configuration: a run without flags -------------------------------
+
+
+@pytest.fixture
+def wire_shipped(wire):
+    """Like ``wire``, for a run without flags: the default retriever itself is measured."""
+
+    def _wire(answers):
+        wiring = wire(probe_answers())  # the only retriever such a run builds is the probe
+        measured = ScriptedRetriever(answers, wiring.chunks)
+        wiring.base.retrieve = measured.retrieve
+        return wiring, measured
+
+    return _wire
+
+
+# environment, mode, promotion, hybrid collection, dense probe, rrf_k, label
+SHIPPED = [
+    ({}, "dense", True, False, True, None, "dense + promotion"),
+    ({"ARTICLE_PROMOTION": "false"}, "dense", False, False, False, None, "dense baseline"),
+    ({"RETRIEVAL_MODE": "hybrid"}, "hybrid", True, True, True, 60, "hybrid + promotion"),
+    (
+        {"RETRIEVAL_MODE": "hybrid", "ARTICLE_PROMOTION": "false"},
+        *("hybrid", False, True, True, 60, "hybrid"),
+    ),
+    (
+        {"RETRIEVAL_MODE": "sparse", "ARTICLE_PROMOTION": "false"},
+        *("sparse", False, True, True, None, "sparse"),
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    ("environment", "mode", "promotion", "hybrid", "probed", "rrf_k", "label"),
+    SHIPPED,
+    ids=["defaults", "promotion off", "hybrid", "hybrid without promotion", "sparse"],
+)
+def test_a_run_without_flags_measures_the_configuration_of_the_settings(
+    wire_shipped,
+    monkeypatch,
+    tmp_path,
+    capsys,
+    questions_path,
+    environment,
+    mode,
+    promotion,
+    hybrid,
+    probed,
+    rrf_k,
+    label,
+):
+    for name, value in environment.items():
+        monkeypatch.setenv(name, value)
+    wiring, measured = wire_shipped(low_answers(fused=mode == "hybrid"))
+    settings = Settings()
+    collection = settings.hybrid_collection_name if hybrid else settings.collection_name
+    out = tmp_path / "run.jsonl"
+
+    assert run_eval.main(["--questions", str(questions_path), "--out", str(out)]) == 0
+
+    printed = capsys.readouterr().out
+    assert wiring.base_calls == 1
+    assert measured.calls == [(q.question, 10) for q in QUESTIONS]
+    expected = [(collection, "dense", False)] if probed else []
+    assert [(b.collection, b.mode, b.promote) for b in wiring.built] == expected
+    for built in wiring.built:
+        assert built.client is wiring.base.client
+        assert built.embedder is wiring.base.embedder  # so the model loads once
+        assert built.fake.calls == [(q.question, 10) for q in QUESTIONS]
+    overview = _section(printed, 1)
+    assert f"Collection: {collection}" in overview
+    assert f"Chế độ truy xuất: {mode}" in overview
+    assert f"Promotion số Điều: {'bật' if promotion else 'tắt'}" in overview
+    assert label_of(printed) == label
+    # Section 4 shows the dense top-1 cosines of the probe; without one, the run's own (0.11).
+    lowest = "0,720" if probed else "0,110"
+    assert _section(printed, 4)[0].startswith(f"Trong phạm vi: n=5, thấp nhất {lowest}")
+    meta = read_meta(tmp_path / "run.meta.json")
+    assert (meta["mode"], meta["promotion"], meta["rrf_k"]) == (mode, promotion, rrf_k)
+    assert meta["collection"] == collection
+    assert meta["collection_metadata"] == (STORED_METADATA if hybrid else None)
+
+
+def test_a_run_without_flags_describes_the_shipped_run_in_section_7(
+    wire_shipped, tmp_path, capsys, questions_path
+):
+    wire_shipped(low_answers())
+    reference = write_run(tmp_path / "a.jsonl", [run_row(q) for q in QUESTIONS])
+
+    code = run_eval.main(["--questions", str(questions_path), "--reference", str(reference)])
+
+    assert code == 0
+    assert "B (run này): mode dense, promotion bật" in capsys.readouterr().out
+
+
+# Local mode searches exactly by brute force and warns that the exact=True flag changes nothing.
+@pytest.mark.filterwarnings("ignore:Local mode performs exact:UserWarning")
+def test_a_run_without_flags_through_the_real_default_retriever(
+    monkeypatch, tmp_path, capsys, all_chunks, fake_embedder, questions_path
+):
+    wanted = {full_id(short) for ids in MAPPING.values() for short in ids}
+    chunks = [chunk for chunk in all_chunks if chunk.id in wanted]
+    client = QdrantClient(":memory:")
+    vectors = fake_embedder.embed_documents([chunk.context_text for chunk in chunks])
+    index_chunks(chunks, vectors, client, Settings().collection_name)
+    fake_embedder.device = "cpu"
+    monkeypatch.setattr(retriever_module, "connect", lambda _settings: client)
+    monkeypatch.setattr(retriever_module, "build_embedder", lambda _settings: fake_embedder)
+    out = tmp_path / "run.jsonl"
+
+    default_retriever.cache_clear()
+    try:
+        code = run_eval.main(["--questions", str(questions_path), "--out", str(out)])
+    finally:
+        default_retriever.cache_clear()
+
+    captured = capsys.readouterr()
+    assert code == 0, captured.err
+    assert label_of(captured.out) == "dense + promotion"
+    meta = read_meta(tmp_path / "run.meta.json")
+    assert (meta["mode"], meta["promotion"], meta["device"]) == ("dense", True, "cpu")
+    assert meta["collection"] == Settings().collection_name
+    # q003 names Điều 25, so promotion puts a chunk of it first.
+    assert read_rows(out)[2]["rank_article"] == 1
+    client.close()
+
+
+def test_a_run_without_flags_rejects_sparse_with_promotion(
+    wire, monkeypatch, capsys, questions_path
+):
+    monkeypatch.setenv("RETRIEVAL_MODE", "sparse")
+    wiring = wire(low_answers())
+
+    assert run_eval.main(["--questions", str(questions_path)]) == 1
+
+    captured = capsys.readouterr()
+    assert "RETRIEVAL_MODE=sparse" in captured.err
+    assert "ARTICLE_PROMOTION=false" in captured.err
+    assert (captured.out, wiring.base_calls, wiring.built) == ("", 0, [])
+
+
+# The retrieval flags of the five commands that T6 ran, by the run each one saved.
+T6_COMMANDS = {
+    "r1-dense": ["--collection", "hybrid"],
+    "r2-sparse": ["--retriever", "sparse"],
+    "r3-hybrid": ["--retriever", "hybrid"],
+    "r4-dense-promo": ["--collection", "hybrid", "--promote"],
+    "r5-hybrid-promo": ["--retriever", "hybrid", "--promote"],
+}
+
+
+@pytest.mark.parametrize(
+    "environment",
+    [{}, {"RETRIEVAL_MODE": "hybrid"}, {"ARTICLE_PROMOTION": "false"}],
+    ids=["default settings", "hybrid settings", "promotion off"],
+)
+@pytest.mark.parametrize("run", T6_COMMANDS)
+def test_the_t6_commands_still_configure_their_runs(
+    wire, monkeypatch, tmp_path, questions_path, run, environment
+):
+    for name, value in environment.items():
+        monkeypatch.setenv(name, value)
+    wire(low_answers())
+    out = tmp_path / "run.jsonl"
+
+    code = run_eval.main(["--questions", str(questions_path), "--out", str(out), *T6_COMMANDS[run]])
+
+    assert code == 0
+    recorded = read_meta(REPO_ROOT / "eval" / "runs" / f"2026-11-27-{run}.meta.json")
+    meta = read_meta(tmp_path / "run.meta.json")
+    for key in ("collection", "mode", "rrf_k", "promotion"):
+        assert meta[key] == recorded[key], key
 
 
 # --- comparison with a reference run ----------------------------------------------
@@ -1638,7 +1823,11 @@ raise SystemExit(run_eval.main(sys.argv[1:]))
 
 
 def run_on_a_cp1252_console(arguments):
-    env = os.environ | {"PYTHONIOENCODING": "cp1252", "QDRANT_COLLECTION": "luật_lao_động"}
+    env = os.environ | {
+        "PYTHONIOENCODING": "cp1252",
+        "QDRANT_COLLECTION": "luật_lao_động",
+        "ARTICLE_PROMOTION": "false",  # the fake retriever has no client for a dense probe
+    }
     return subprocess.run(
         [sys.executable, "-c", CONSOLE_SCRIPT, *arguments],
         check=False,

@@ -30,6 +30,7 @@ Baseline dense đo ngày 22/11/2026 trên bộ câu `577b8392afeb` (127 câu, xe
 | 2026-11-27 | T6 (3): hybrid RRF | 0,744 | 0,922 | 0,944 | 0,815 | Mức Khoản: 0,700 / 0,889 / 0,911 / 0,773; R@1 theo nhóm (mức Điều): direct 44/45, paraphrase 23/45; bộ câu 577b8392afeb; n=90 (+12 article_ref, 25 ngoài phạm vi); article_ref R@1 11/12; xem mục Tuần 4 |
 | 2026-11-27 | T6 (4): dense + promotion số Điều | 0,844 | 1,000 | 1,000 | 0,907 | Mức Khoản: 0,778 / 0,989 / 1,000 / 0,864; R@1 theo nhóm (mức Điều): direct 44/45, paraphrase 32/45; bộ câu 577b8392afeb; n=90 (+12 article_ref, 25 ngoài phạm vi); article_ref R@1 12/12; xem mục Tuần 4 |
 | 2026-11-27 | T6 (5): hybrid + promotion số Điều | 0,744 | 0,922 | 0,944 | 0,815 | Mức Khoản: 0,700 / 0,889 / 0,911 / 0,773; R@1 theo nhóm (mức Điều): direct 44/45, paraphrase 23/45; bộ câu 577b8392afeb; n=90 (+12 article_ref, 25 ngoài phạm vi); article_ref R@1 12/12; xem mục Tuần 4 |
+| 2026-11-27 | T7: search/ask dùng dense + promotion số Điều (mặc định mới) | 0,844 | 1,000 | 1,000 | 0,907 | Mức Khoản: 0,778 / 0,989 / 1,000 / 0,864; R@1 theo nhóm (mức Điều): direct 44/45, paraphrase 32/45; bộ câu 577b8392afeb; n=90 (+12 article_ref, 25 ngoài phạm vi); article_ref R@1 12/12; so với run (4) của T6: dung sai (a)–(d) đạt, 0 đổi chỗ |
 
 ## Tuần 4: hybrid và promotion số Điều (pre-registration)
 
@@ -138,3 +139,4 @@ Thăm dò, không dùng để quyết định — run (2) sparse so với run (1
 ### 6. Tiếp theo
 
 - T7 nối cấu hình đã chốt (dense trên collection cũ, bật promotion số Điều) vào `search` và `ask`.
+- T7 đã xong trong commit `feat: ship dense retrieval with article promotion as the default (T7)`: mặc định là dense trên collection chỉ có dense, bật promotion số Điều.
