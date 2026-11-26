@@ -2,7 +2,9 @@
 
 Hỏi đáp tiếng Việt về Bộ luật Lao động 2019 (45/2019/QH14), trả lời kèm trích dẫn Điều/Khoản gốc.
 
-> Thông tin chỉ mang tính tham khảo, không thay thế tư vấn pháp lý.
+Hệ thống dùng RAG (retrieval-augmented generation, thuật ngữ của Lewis và cộng sự, NeurIPS 2020, https://arxiv.org/abs/2005.11401) theo nghĩa rộng, không fine-tune mô hình như bài báo gốc: truy xuất các chunk liên quan, yêu cầu mô hình ngôn ngữ chỉ trả lời dựa trên các chunk đó và gắn mã nguồn `[S#]` cho từng khẳng định, rồi hệ thống hiển thị nhãn Điều/Khoản và nguyên văn của các chunk được trích, lấy từ dữ liệu chứ không từ văn bản mô hình viết.
+
+> Thông tin chỉ mang tính tham khảo, không thay thế tư vấn pháp lý. Câu trả lời do mô hình ngôn ngữ (AI) tạo ra, có thể sai; hãy đối chiếu với nguyên văn Điều/Khoản được trích.
 
 **Trạng thái:** xong Tuần 1 (dữ liệu và chunking) và nửa đầu Tuần 2 (Qdrant và truy xuất dense). Phần sinh câu trả lời có trích dẫn (lệnh `ask`) đã có mã và test đơn vị nhưng chưa chạy với nhà cung cấp LLM thật, chưa đo chất lượng hay độ trễ; Tuần 2 chưa được xác nhận là xong. Kế hoạch chi tiết xem tại [KE_HOACH_RAG.md](KE_HOACH_RAG.md).
 
@@ -95,7 +97,8 @@ uv run python -m eval.run_eval [--out eval/runs/<ngày>-<nhãn>.jsonl] [--label 
 Lệnh cần Qdrant đang chạy và model embedding trong cache cục bộ. Mỗi câu gọi `retrieve` một lần với `k = 10`; không gọi LLM.
 
 - **Bộ câu** `eval/questions.jsonl` (127 câu): 45 cặp câu trực tiếp / câu đời thường có cùng đáp án, 12 câu nêu số Điều (`article_ref`), 25 câu ngoài phạm vi. Đáp án là danh sách id chunk mức Khoản; `gold_articles` lưu riêng để mức Điều vẫn tính được khi đổi cách chunk.
-- **Hai mức đo:** mức Khoản trúng khi đúng id chunk; mức Điều trúng khi chunk thuộc Điều đáp án. Số chính là recall@5 mức Điều trên 90 câu `direct` + `paraphrase`. Câu ngoài phạm vi không tính recall, chỉ ghi điểm top-1.
+- **recall@k (viết tắt R@k)** ở đây là hit rate: tỷ lệ câu hỏi có kết quả trúng đầu tiên nằm trong top k (`recall_at` trong `eval/metrics.py`). Đây không phải recall cổ điển tính trên mọi chunk đáp án.
+- **Hai mức đo:** mức Khoản trúng khi đúng id chunk; mức Điều trúng khi chunk thuộc Điều đáp án. Từ Tuần 4, chỉ số chính là R@1 mức Điều theo từng nhóm (`direct`, `paraphrase`), chỉ số phụ là MRR@10, vì recall@5 mức Điều của baseline đã đạt 1,000. Câu ngoài phạm vi không tính recall, chỉ ghi điểm top-1.
 - **Cách tạo bộ câu:** bản nháp do các model Claude soạn và sửa (chủ yếu Claude Sonnet) từ nguyên văn `chunks.jsonl`, không chạy truy xuất khi soạn hay duyệt. Hai vòng review nội dung và một vòng duyệt nghiệm thu do Claude Opus thực hiện theo các tiêu chí: đáp án đủ (Buckley & Voorhees, SIGIR 2004), câu trả lời được và không mơ hồ, tránh trùng từ khóa với chunk đáp án (Thakur và cộng sự, BEIR, NeurIPS 2021), câu ngoài phạm vi trông liên quan nhưng không Điều nào trả lời (Rajpurkar và cộng sự, ACL 2018), giữ đủ số câu (Voorhees & Buckley, SIGIR 2002). **Bộ câu chưa được người duyệt**; đáp án do một họ model soạn và duyệt, nên có rủi ro thiên lệch (Faggioli và cộng sự, ICTIR 2023; Panickssery và cộng sự, NeurIPS 2024).
 - **Đáp án sau duyệt nghiệm thu:** Điều 129 là đáp án của hai cặp (p25 và p31), vì `d129:k1` được thêm vào p31 cho đủ đáp án; p38 có thêm `d193:k3` và `d197:k3`. Quy tắc "mỗi Điều chỉ thuộc một cặp" của spec (§5.2) vì vậy không còn đúng cho bộ đã duyệt, và p31 dễ trúng hơn một chút ở mức Điều (chunk của Điều 129 hoặc 164 đều tính). Các chỉnh sửa đáp án của p31 và p38 chỉ nằm trong `eval/questions.jsonl`; `eval/questions.draft.jsonl` vẫn giữ đáp án gốc, nên chạy lại wizard từ file duyệt rỗng sẽ khôi phục đáp án cũ.
 - **Đóng băng:** sau baseline, `eval/questions.jsonl` chỉ đổi kèm một dòng giải thích trong `eval/results.md`. `run_eval` in mã sha256 (12 ký tự đầu) của bộ câu; mỗi dòng kết quả ghi mã này.
@@ -104,7 +107,7 @@ Lệnh cần Qdrant đang chạy và model embedding trong cache cục bộ. M�
 
 | Nhóm | n | Điều R@5 | Điều R@10 | Điều MRR@10 | Khoản R@5 | Khoản R@10 | Khoản MRR@10 |
 |---|---|---|---|---|---|---|---|
-| Số chính (direct + paraphrase) | 90 | 1,000 | 1,000 | 0,907 | 0,989 | 1,000 | 0,864 |
+| Gộp (direct + paraphrase) | 90 | 1,000 | 1,000 | 0,907 | 0,989 | 1,000 | 0,864 |
 | direct | 45 | 1,000 | 1,000 | 0,989 | 1,000 | 1,000 | 0,956 |
 | paraphrase | 45 | 1,000 | 1,000 | 0,826 | 0,978 | 1,000 | 0,773 |
 | article_ref | 12 | 0,833 | 0,917 | 0,775 | 0,833 | 0,917 | 0,775 |
@@ -138,3 +141,4 @@ Bản hợp nhất 18/VBHN-VPQH ngày 12/02/2026 của Bộ luật Lao động 4
 15. Khi chưa cấu hình `LLM_API_KEY`, lệnh `ask` dừng sớm với một dòng lỗi (xem phần Sinh câu trả lời); `ask` không có chế độ không cần khóa (riêng `search` vẫn chạy được mà không cần khóa).
 16. Chống chèn chỉ thị: cách đóng gói JSON và prompt "dữ liệu, không phải chỉ thị" (`app/rag/prompts.py`) chỉ giảm rủi ro, không loại bỏ. Các test chỉ kiểm cấu trúc (nội dung độc không làm vỡ JSON và được giữ nguyên từng ký tự), không khẳng định mô hình không bị lừa. Chưa đo độ bền thật trước chỉ thị nằm trong câu hỏi hoặc trong văn bản truy xuất; việc đó chỉ đo được bằng eval với mô hình thật.
 17. Văn bản lặp vô nghĩa: mô hình từng trả các khẳng định chỉ gồm một từ lặp lại (lần chạy thật ngày 15/11/2026). Hệ thống từ chối khẳng định có đơn vị 1–4 từ lặp liên tiếp từ 4 lần trở lên (không phân biệt hoa thường, bỏ dấu câu và ký hiệu ở hai đầu mỗi từ); câu trả lời như vậy kết thúc bằng `invalid model answer: degenerate_claim` và mã thoát 1. Lệnh không tự thử lại, nên hãy chạy lại lệnh. Ngưỡng 4 dựa trên toàn bộ 676 chunk (`text` và `context_text`), nơi đơn vị lặp liên tiếp dài nhất là 2 lần. Ba giới hạn: đơn vị lặp dài hơn 4 từ không bị phát hiện; lặp trải qua nhiều khẳng định khác nhau không bị phát hiện; đây chỉ là kiểm tra cấu trúc, không đánh giá khẳng định có đúng hay có được nguồn ủng hộ hay không.
+18. Câu hỏi cần toàn bộ văn bản luật cùng lúc (ví dụ "Liệt kê mọi nghĩa vụ của người sử dụng lao động trong Bộ luật") nằm ngoài khả năng của truy xuất top-k, vì `ask` chỉ đưa tối đa `MAX_CONTEXTS` (hiện là 8, mặc định `-k` là 5) chunk vào mô hình. RAG dựa trên vector hợp với câu hỏi trả lời được từ một số ít đoạn, không hỗ trợ câu hỏi cần hiểu toàn bộ tập dữ liệu (Edge và cộng sự, 2024, §1, https://arxiv.org/abs/2404.16130).
