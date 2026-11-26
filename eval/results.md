@@ -132,7 +132,7 @@ Thăm dò, không dùng để quyết định — run (2) sparse so với run (1
 
 ### 5. Luật lấp chỗ spec để ngỏ
 
-- Cố định trước run (2). Hòa điểm trong nhánh (T3): dense theo (−cosine, chunk id), sparse theo (−BM25, hạng dense). Parser số Điều (T4): Q1 (các cách gọi khác của Bộ luật này, gồm "luật" đứng chung chung), Q2 (loại bản 2012), Q3 ("của"/"trong" nối với hợp đồng, nội quy, quy chế, thỏa ước, điều lệ là văn bản khác), Q4 (truy vấn promotion dense chạy exact, hòa cosine theo chunk id) và danh sách từ chỉ lượng chút, tí, tý, tị, xíu, tẹo, lát. Nội dung ghi trong commit message của `f3379ab` và `8744637`.
+- Cố định trước run (2). Hòa điểm trong nhánh (T3): dense theo (−cosine, chunk id), sparse theo (−BM25, hạng dense). Parser số Điều (T4): các cách gọi khác của Bộ luật này, gồm "luật" đứng chung chung; loại bản 2012; "của"/"trong" nối với hợp đồng, nội quy, quy chế, thỏa ước, điều lệ là văn bản khác; truy vấn promotion dense chạy exact, hòa cosine theo chunk id; danh sách từ chỉ lượng chút, tí, tý, tị, xíu, tẹo, lát. Nội dung ghi trong commit message của `f3379ab` và `8744637`.
 - Luật tuyên bố §5.6 chỉ viết sẵn câu 'không có ý nghĩa thống kê' cho trường hợp C1 không đạt; kết quả rơi vào chiều ngược (mid-p ≤ 0,05 với c > b), nên câu tuyên bố ở README do người điều phối chọn sau lần nhìn đầu tiên. Câu này không đổi kiểm định (§5.2), α hay quyết định (§5.4), và không tuyên bố cải thiện nào.
 
 ### 6. Tiếp theo

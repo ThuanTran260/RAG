@@ -98,7 +98,7 @@ uv run python -m eval.run_eval [--out eval/runs/<ngày>-<nhãn>.jsonl] [--label 
 
 `--reference <run>` in thêm mục 7 của báo cáo: so sánh lần chạy này với run đó.
 
-Lệnh cần Qdrant đang chạy và model embedding trong cache cục bộ. Mỗi câu gọi `retrieve` một lần với `k = 10`; không gọi LLM.
+Lệnh cần Qdrant đang chạy và model embedding trong cache cục bộ. Mỗi câu gọi `retrieve` một lần với `k = 10`; với `--retriever sparse|hybrid` hoặc `--promote`, mỗi câu gọi thêm `retrieve` dense một lần để lấy điểm cosine top-1 cho mục 4 của báo cáo. Không gọi LLM.
 
 - **Bộ câu** `eval/questions.jsonl` (127 câu): 45 cặp câu trực tiếp / câu đời thường có cùng đáp án, 12 câu nêu số Điều (`article_ref`), 25 câu ngoài phạm vi. Đáp án là danh sách id chunk mức Khoản; `gold_articles` lưu riêng để mức Điều vẫn tính được khi đổi cách chunk.
 - **recall@k (viết tắt R@k)** ở đây là hit rate: tỷ lệ câu hỏi có kết quả trúng đầu tiên nằm trong top k (`recall_at` trong `eval/metrics.py`). Đây không phải recall cổ điển tính trên mọi chunk đáp án.
@@ -135,8 +135,8 @@ R@1 và MRR@10 mức Điều. Luật chốt được ghi trước khi đo.
 | (5) hybrid + promotion | 44/45 (0,978) | 23/45 (0,511) | 12/12 (1,000) | 0,815 |
 
 - **Hybrid không cải thiện R@1 câu đời thường mà làm giảm.** Trên 45 câu paraphrase: 32/45 → 23/45 (−9 câu; 0,711 → 0,511); b = 3, c = 12; p chính xác 0,035156, mid-p 0,021271. Kiểm định McNemar hai phía đã đăng ký (α = 0,05) có ý nghĩa theo chiều dense đúng nhiều hơn; C1 không đạt vì C1 cần b > c. Kết quả chỉ nói về cấu hình này (BM25 `vi-syl-bigram-v1`, RRF k = 60) trên bộ câu `577b8392afeb`.
-- Giải thích (thăm dò, chưa kiểm chứng): bộ câu được duyệt theo tiêu chí tránh trùng từ khóa với chunk đáp án (xem 'Cách tạo bộ câu'), một điều kiện bất lợi cho BM25. BM25 một mình (run 2) đạt R@1 direct 42/45 nhưng paraphrase 13/45.
-- **Promotion số Điều (độ phủ của parser):** run (4) so với run (1), article_ref R@1 9/12 → 12/12 (+3 câu; 0,750 → 1,000); hạng Khoản của q097 và q102 giữ nguyên 1 → 1; điều kiện (d) trên 115 câu còn lại đạt, 0 đổi chỗ. Parser được nghiệm thu trên chính văn bản 12 câu này; không kiểm định thống kê.
+- Giải thích (thăm dò, chưa kiểm chứng): câu đời thường trùng ít từ với chunk đáp án hơn hẳn câu trực tiếp (tỷ lệ âm tiết của câu hỏi có trong chunk đáp án: 0,36 so với 0,87; [spec Tuần 4](docs/superpowers/specs/2026-11-26-week4-hybrid-design.md), mục 4), một điều kiện bất lợi cho BM25. BM25 một mình (run 2) đạt R@1 direct 42/45 nhưng paraphrase 13/45.
+- **Promotion số Điều (độ phủ của parser):** run (4) so với run (1), article_ref R@1 9/12 → 12/12 (+3 câu; 0,750 → 1,000); hạng Khoản của q097 và q102 giữ nguyên 1 → 1; điều kiện (d) trên 115 câu còn lại đạt, 0 đổi chỗ. Parser được nghiệm thu trên chính văn bản bộ câu (12 câu article_ref cho đúng Điều đáp án, 115 câu còn lại cho tập rỗng), nên đây là độ phủ trên câu đã thấy, không phải ước lượng cho câu mới; không kiểm định thống kê.
 - **Quyết định:** giữ dense, bật promotion số Điều. `search` và `ask` chưa dùng promotion; việc nối cấu hình là bước tiếp theo.
 
 Chi tiết, guard cho câu trực tiếp và danh sách câu tụt hạng: mục "Tuần 4: hybrid và promotion số Điều (pre-registration)" trong [eval/results.md](eval/results.md).
