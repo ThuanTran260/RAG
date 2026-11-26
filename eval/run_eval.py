@@ -1038,17 +1038,6 @@ def _run(args: argparse.Namespace, config: RunConfig) -> int:
     results = evaluate(questions, retriever, probe)
     day = date.today()
     run_lines = [_run_line(result) for result in results]
-    if args.out is not None:
-        meta = _run_meta(config, collection, base, digest, day)
-        _write_files(
-            [
-                (
-                    args.out,
-                    "".join(json.dumps(line, ensure_ascii=False) + "\n" for line in run_lines),
-                ),
-                (meta_path(args.out), json.dumps(meta, ensure_ascii=False, indent=2) + "\n"),
-            ]
-        )
     output = [
         render_report(
             results,
@@ -1075,6 +1064,18 @@ def _run(args: argparse.Namespace, config: RunConfig) -> int:
     output.append(
         results_row(results, clause_level=clause_level, digest=digest, label=label, day=day)
     )
+    # Render first, so a failure while rendering leaves no run or meta file.
+    if args.out is not None:
+        meta = _run_meta(config, collection, base, digest, day)
+        _write_files(
+            [
+                (
+                    args.out,
+                    "".join(json.dumps(line, ensure_ascii=False) + "\n" for line in run_lines),
+                ),
+                (meta_path(args.out), json.dumps(meta, ensure_ascii=False, indent=2) + "\n"),
+            ]
+        )
     print("\n\n".join(output))
     return 0
 

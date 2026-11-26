@@ -675,6 +675,24 @@ def test_a_dense_run_file_keeps_todays_keys(wire, tmp_path, questions_path):
         assert all(set(item) == {"id", "score"} for item in row["top"])
 
 
+def test_a_failure_while_rendering_leaves_no_output(wire, tmp_path, questions_path, monkeypatch):
+    wire(low_answers())
+    out = tmp_path / "dense.jsonl"
+
+    def broken(*args, **kwargs):
+        raise RuntimeError("render failed")
+
+    monkeypatch.setattr(run_eval, "render_report", broken)
+
+    with pytest.raises(RuntimeError, match="render failed"):
+        run_eval.main(
+            ["--questions", str(questions_path), "--collection", "hybrid", "--out", str(out)]
+        )
+
+    assert not out.exists()
+    assert not run_eval.meta_path(out).exists()
+
+
 def test_a_hybrid_run_file_adds_the_keys_that_are_set(wire, tmp_path, questions_path):
     answers = low_answers(fused=True)
     # A chunk without a BM25 hit, and a question that fell back to the dense ranking.
@@ -1002,6 +1020,8 @@ def test_comparison_clause_ranks_are_na_without_gold_ids(tmp_path):
         (3, 1, "không", "không"),  # exact p = 10/16, mid-p = 6/16
         (4, 1, "không", "có"),  # exact p = 12/32, mid-p = 7/32
         (6, 0, "có", "có"),  # exact p = 2/64, mid-p = 1/64
+        (7, 1, "có", "có"),  # exact p = 18/256 > 0.05, mid-p = 10/256 <= 0.05: C1 reads the mid-p
+        (5, 2, "không", "không"),  # b - c = 3, but c = 2 > 1
         (0, 6, "không", "không"),  # the same p values, but B lost
     ],
 )
