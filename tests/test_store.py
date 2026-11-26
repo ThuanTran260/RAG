@@ -1,9 +1,17 @@
 import pytest
+from qdrant_client import QdrantClient
 from qdrant_client.http.exceptions import ResponseHandlingException, UnexpectedResponse
+from qdrant_client.models import Distance, Modifier, SparseVectorParams, VectorParams
 
 from app.core.config import Settings
 from app.rag import store
-from app.rag.store import QdrantUnavailableError, connect, qdrant_errors
+from app.rag.store import (
+    QdrantUnavailableError,
+    connect,
+    hybrid_collection_problem,
+    qdrant_errors,
+)
+from ingestion.index import index_chunks, index_hybrid_chunks
 
 
 def test_the_connection_probe_keeps_the_specific_hint():
@@ -89,3 +97,108 @@ def test_a_wrong_service_is_blamed_on_the_url_not_the_collection():
 
 def test_a_rate_limit_asks_to_retry_later():
     assert "Retry later" in store.rejection_message(rejection(429), searching=True)
+
+
+HYBRID_COMMAND = "uv run python -m ingestion.index --hybrid"
+
+
+@pytest.fixture
+def client():
+    qdrant = QdrantClient(":memory:")
+    yield qdrant
+    qdrant.close()
+
+
+@pytest.fixture
+def hybrid(client, sample_chunks, fake_embedder):
+    """The client, holding a freshly built hybrid collection named "hybrid"."""
+    vectors = fake_embedder.embed_documents([chunk.context_text for chunk in sample_chunks])
+    index_hybrid_chunks(
+        sample_chunks,
+        vectors,
+        client,
+        "hybrid",
+        model_name=fake_embedder.model_name,
+        chunks_sha256="a" * 64,
+    )
+    return client
+
+
+def problem_of(client, collection):
+    return hybrid_collection_problem(client.get_collection(collection), collection)
+
+
+def assert_hint(problem, collection):
+    assert collection in problem
+    assert problem.endswith(HYBRID_COMMAND)
+    assert "\n" not in problem
+
+
+def test_a_fresh_hybrid_collection_has_no_problem(hybrid):
+    assert problem_of(hybrid, "hybrid") is None
+
+
+def test_a_dense_collection_lacks_the_sparse_vector(client, sample_chunks, fake_embedder):
+    vectors = fake_embedder.embed_documents([chunk.context_text for chunk in sample_chunks])
+    index_chunks(sample_chunks, vectors, client, "dense")
+
+    problem = problem_of(client, "dense")
+
+    assert "bm25_ub" in problem
+    assert_hint(problem, "dense")
+
+
+@pytest.mark.parametrize(
+    ("sparse_name", "modifier"),
+    [
+        ("other", Modifier.IDF),
+        ("bm25_ub", None),  # the right name, but Qdrant would apply no IDF
+    ],
+)
+def test_a_wrong_sparse_configuration_is_reported(client, sparse_name, modifier):
+    client.create_collection(
+        "wrong",
+        vectors_config=VectorParams(size=8, distance=Distance.COSINE),
+        sparse_vectors_config={sparse_name: SparseVectorParams(modifier=modifier)},
+    )
+
+    problem = problem_of(client, "wrong")
+
+    assert "bm25_ub" in problem
+    assert_hint(problem, "wrong")
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("tokenizer_version", "vi-syl-bigram-v0"),
+        ("tokenizer_version", None),
+        ("schema_version", 2),
+        ("k1", 0.9),
+        ("b", 0.5),
+        ("points", 0),
+        ("points", "12"),
+        ("points", None),
+    ],
+)
+def test_stale_or_broken_metadata_is_reported(hybrid, key, value):
+    # update_collection merges, and None stands for a value the collection does not have.
+    hybrid.update_collection("hybrid", metadata={key: value})
+
+    problem = problem_of(hybrid, "hybrid")
+
+    assert key in problem
+    assert_hint(problem, "hybrid")
+
+
+def test_a_collection_without_metadata_is_reported(client):
+    client.create_collection(
+        "bare",
+        vectors_config=VectorParams(size=8, distance=Distance.COSINE),
+        sparse_vectors_config={"bm25_ub": SparseVectorParams(modifier=Modifier.IDF)},
+    )
+
+    problem = problem_of(client, "bare")
+
+    assert "tokenizer_version" in problem
+    assert_hint(problem, "bare")

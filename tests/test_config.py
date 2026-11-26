@@ -22,6 +22,16 @@ def test_environment_overrides_defaults(monkeypatch):
     assert settings.collection_name == ("labor_law_vn__aiteamvn-vietnamese-embedding--5d5026633ba6")
 
 
+def test_hybrid_collection_name_extends_the_dense_one():
+    settings = Settings(_env_file=None)
+    assert settings.hybrid_collection_name == ("labor_law_vn__baai-bge-m3--d790e737453c__hybrid-v1")
+
+
+def test_hybrid_collection_name_follows_the_collection_and_the_model():
+    settings = Settings(_env_file=None, qdrant_collection="other", embedding_model="fake/model")
+    assert settings.hybrid_collection_name == "other__fake-model--da372fba630a__hybrid-v1"
+
+
 def test_env_file_is_read_and_unknown_keys_are_ignored(tmp_path):
     env_file = tmp_path / ".env"
     env_file.write_text("UNKNOWN_SETTING=ignored\nQDRANT_COLLECTION=other\n", encoding="utf-8")

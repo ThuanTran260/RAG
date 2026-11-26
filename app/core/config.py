@@ -9,6 +9,8 @@ from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+# Layout of the hybrid collection (vectors and metadata keys); bump it when that layout changes.
+HYBRID_SCHEMA_VERSION = 1
 
 
 def model_slug(model_name: str) -> str:
@@ -70,6 +72,11 @@ class Settings(BaseSettings):
     @property
     def collection_name(self) -> str:
         return f"{self.qdrant_collection}__{model_key(self.embedding_model)}"
+
+    @property
+    def hybrid_collection_name(self) -> str:
+        """The dense + BM25 collection, kept beside the dense-only one."""
+        return f"{self.collection_name}__hybrid-v{HYBRID_SCHEMA_VERSION}"
 
 
 @lru_cache

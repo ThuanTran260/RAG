@@ -5,8 +5,10 @@ from contextlib import contextmanager
 
 from qdrant_client import QdrantClient
 from qdrant_client.http.exceptions import ResponseHandlingException, UnexpectedResponse
+from qdrant_client.models import CollectionInfo, Modifier
 
-from app.core.config import Settings
+from app.core.config import HYBRID_SCHEMA_VERSION, Settings
+from app.rag.sparse import K1, TOKENIZER_VERSION, B
 
 
 class QdrantUnavailableError(RuntimeError):
@@ -41,6 +43,45 @@ def qdrant_errors(url: str | None = None) -> Iterator[None]:
 
 
 INDEX_COMMAND = "uv run python -m ingestion.index"
+HYBRID_INDEX_COMMAND = f"{INDEX_COMMAND} --hybrid"
+SPARSE_VECTOR_NAME = "bm25_ub"  # BM25 over unigrams and bigrams
+
+
+def hybrid_collection_problem(info: CollectionInfo, collection: str) -> str | None:
+    """None when this code can query ``info`` as a hybrid collection, else a one-line hint.
+
+    ``info`` is what ``get_collection(collection)`` returned. The hint ends with the command that
+    rebuilds the collection. The index command writes the metadata last, so an interrupted build
+    is reported too.
+    """
+    problem = _hybrid_problem(info)
+    if problem is None:
+        return None
+    return f"Collection {collection} {problem}. Index lại bằng: {HYBRID_INDEX_COMMAND}"
+
+
+def _hybrid_problem(info: CollectionInfo) -> str | None:
+    sparse = (info.config.params.sparse_vectors or {}).get(SPARSE_VECTOR_NAME)
+    if sparse is None:
+        return f"không có sparse vector {SPARSE_VECTOR_NAME}"
+    if sparse.modifier != Modifier.IDF:
+        return f"có sparse vector {SPARSE_VECTOR_NAME} nhưng thiếu modifier IDF"
+    metadata = info.config.metadata or {}
+    # The tokenizer comes first: it is the rule most likely to change between two commits.
+    expected = {
+        "tokenizer_version": TOKENIZER_VERSION,
+        "schema_version": HYBRID_SCHEMA_VERSION,
+        "k1": K1,
+        "b": B,
+    }
+    for key, value in expected.items():
+        if metadata.get(key) != value:
+            return f"có metadata {key} = {metadata.get(key)!r}, code hiện tại cần {value!r}"
+    # Queries read the whole ranking, so the stored point count sets their depth.
+    points = metadata.get("points")
+    if type(points) is not int or points < 1:
+        return f"có metadata points = {points!r}, cần một số nguyên dương"
+    return None
 
 
 def rejection_message(error: UnexpectedResponse, *, searching: bool) -> str:
