@@ -4,11 +4,17 @@ import hashlib
 import re
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+# Layout of the hybrid collection (vectors and metadata keys); bump it when that layout changes.
+# It also names the collection (__hybrid-v<N>), so a bump indexes a new one and keeps the old.
+HYBRID_SCHEMA_VERSION = 1
+
+RetrievalMode = Literal["dense", "sparse", "hybrid"]
 
 
 def model_slug(model_name: str) -> str:
@@ -39,6 +45,11 @@ class Settings(BaseSettings):
     # None lets sentence-transformers pick the GPU when one is available.
     embedding_device: str | None = None
     embedding_batch_size: int = Field(default=16, ge=1)
+    # How search and ask retrieve; the defaults are the configuration Week 4 adopted.
+    retrieval_mode: RetrievalMode = "dense"
+    # Move chunks of the articles a question names to the top. Declared after retrieval_mode,
+    # which its validator reads; the default is validated too.
+    article_promotion: bool = Field(default=True, validate_default=True)
     llm_provider: str = "gemini"
     llm_api_key: SecretStr | None = None
     llm_model: str = "gemini-3.5-flash-lite"
@@ -51,6 +62,20 @@ class Settings(BaseSettings):
         value = value.strip()
         if not value:
             raise ValueError("must not be blank")
+        return value
+
+    # A field validator on purpose: the error of a model validator would carry every raw
+    # setting, the LLM key included, into the message that the commands print.
+    @field_validator("article_promotion")
+    @classmethod
+    def _sparse_mode_never_promotes(cls, value: bool, info: ValidationInfo) -> bool:
+        # retrieval_mode is absent from info.data when it was rejected itself.
+        if value and info.data.get("retrieval_mode") == "sparse":
+            raise ValueError(
+                "RETRIEVAL_MODE=sparse does not work with ARTICLE_PROMOTION on (it is on unless "
+                "set to false), "
+                "because sparse mode never promotes. Set ARTICLE_PROMOTION=false."
+            )
         return value
 
     @field_validator("embedding_device")
@@ -70,6 +95,18 @@ class Settings(BaseSettings):
     @property
     def collection_name(self) -> str:
         return f"{self.qdrant_collection}__{model_key(self.embedding_model)}"
+
+    @property
+    def hybrid_collection_name(self) -> str:
+        """The dense + BM25 collection, kept beside the dense-only one."""
+        return f"{self.collection_name}__hybrid-v{HYBRID_SCHEMA_VERSION}"
+
+    @property
+    def retrieval_collection_name(self) -> str:
+        """The collection that retrieval_mode reads: BM25 vectors are in the hybrid one only."""
+        if self.retrieval_mode == "dense":
+            return self.collection_name
+        return self.hybrid_collection_name
 
 
 @lru_cache

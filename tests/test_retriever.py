@@ -1,25 +1,43 @@
+import subprocess
+import sys
 import unicodedata
 from types import SimpleNamespace
 
 import pytest
 from qdrant_client import QdrantClient
 from qdrant_client.http.exceptions import ResponseHandlingException, UnexpectedResponse
-from qdrant_client.models import Distance, VectorParams
+from qdrant_client.models import (
+    Distance,
+    FieldCondition,
+    Filter,
+    MatchAny,
+    Modifier,
+    SearchParams,
+    SparseVector,
+    SparseVectorParams,
+    VectorParams,
+)
 
-from app.core.config import Settings
+from app.core.config import HYBRID_SCHEMA_VERSION, Settings
 from app.rag import retriever as retriever_module
 from app.rag import search
 from app.rag.embedder import EmbeddingModelUnavailableError
+from app.rag.fusion import reciprocal_rank_fusion
 from app.rag.retriever import (
+    RETRIEVAL_MODES,
     CollectionNotIndexedError,
+    InvalidCollectionDataError,
     InvalidQueryError,
     RetrievedChunk,
     Retriever,
     default_retriever,
     retrieve,
 )
-from app.rag.store import QdrantUnavailableError
-from ingestion.index import index_chunks, point_id
+from app.rag.sparse import K1, TOKENIZER_VERSION, B, query_vector
+from app.rag.store import HYBRID_INDEX_COMMAND, QdrantUnavailableError
+from eval.questions import load_questions
+from ingestion.documents import REPO_ROOT
+from ingestion.index import index_chunks, index_hybrid_chunks, point_id
 
 
 class NoEmbedder:
@@ -300,6 +318,7 @@ def test_search_cli_reports_an_unreachable_server(monkeypatch, capsys):
     assert captured.out == ""
 
 
+@pytest.mark.filterwarnings("ignore:Local mode performs exact:UserWarning")  # promotion query
 def test_search_cli_reports_a_server_that_fails_after_the_retriever_was_cached(
     indexed, sample_chunks, monkeypatch, capsys
 ):
@@ -393,3 +412,880 @@ def test_search_cli_reports_a_missing_model_cache_without_a_traceback(indexed, m
     assert captured.out == ""
     assert "uv run python -m ingestion.download_model" in captured.err
     assert "Traceback" not in captured.err
+
+
+def test_the_lazy_embedder_has_no_device_until_the_model_is_built(fake_embedder):
+    built = []
+    fake_embedder.device = "cuda:0"
+    lazy = retriever_module.LazyEmbedder(lambda: built.append(1) or fake_embedder)
+
+    assert (lazy.device, built) == (None, [])  # asking for the device builds nothing
+    lazy.embed_query("thử việc")
+    assert (lazy.device, built) == ("cuda:0", [1])
+
+
+# --- sparse and hybrid modes ------------------------------------------------------
+
+# Questions outside the evaluation set (spec §5.8): no question there has Điều 77, 92, 100 or
+# 205 as gold, which a test below checks.
+CONTRACTOR_QUESTION = "Người cai thầu không trả lương thì ai chịu trách nhiệm?"  # Điều 100
+COUNCIL_QUESTION = "Hội đồng tiền lương quốc gia tư vấn cho ai?"  # Điều 92
+LOCKOUT_QUESTION = (  # Điều 205
+    "Quyết định đóng cửa tạm thời nơi làm việc phải thông báo cho những ai?"
+)
+OUTSIDE_QUESTIONS = (CONTRACTOR_QUESTION, COUNCIL_QUESTION, LOCKOUT_QUESTION)
+OUTSIDE_ARTICLES = (77, 92, 100, 205)
+# Nothing is left of these once the interrogatives and final particles are removed.
+QUESTIONS_WITHOUT_TERMS = ("gì?", "Vì sao vậy?", "Như thế nào ạ?", "?!")
+BM25_MODES = ("sparse", "hybrid")
+
+D77 = "45-2019-QH14:d77"
+D92_K1 = "45-2019-QH14:d92:k1"
+D100_K1 = "45-2019-QH14:d100:k1"
+D100_K2 = "45-2019-QH14:d100:k2"
+D205_K1 = "45-2019-QH14:d205:k1"
+D205_K2 = "45-2019-QH14:d205:k2"
+D205_K3 = "45-2019-QH14:d205:k3"
+
+# Server order, best first, with made-up scores.
+DENSE_HITS = ((D92_K1, 0.9), (D100_K1, 0.8), (D100_K2, 0.7), (D205_K1, 0.6), (D77, 0.5))
+SPARSE_HITS = ((D100_K2, 9.0), (D92_K1, 5.0), (D77, 2.0))
+# DENSE_HITS as hybrid mode returns them when nothing is fused.
+DENSE_ONLY_SUMMARY = [
+    (chunk_id, score, None, rank, None)
+    for rank, (chunk_id, score) in enumerate(DENSE_HITS, start=1)
+]
+
+
+def hybrid_info(points, sparse_vectors=None, **metadata):
+    """The parts of get_collection() that the retriever reads."""
+    if sparse_vectors is None:
+        sparse_vectors = {"bm25_ub": SparseVectorParams(modifier=Modifier.IDF)}
+    stored = {
+        "schema_version": HYBRID_SCHEMA_VERSION,
+        "tokenizer_version": TOKENIZER_VERSION,
+        "k1": K1,
+        "b": B,
+        "points": points,
+    }
+    return SimpleNamespace(
+        config=SimpleNamespace(
+            params=SimpleNamespace(sparse_vectors=sparse_vectors),
+            metadata=stored | metadata,
+        )
+    )
+
+
+class ScriptedClient:
+    """Answers the retriever from fixed hit lists and records every call."""
+
+    def __init__(self, chunks, dense=DENSE_HITS, sparse=SPARSE_HITS, *, exists=True, info=None):
+        self.payloads = {chunk.id: chunk.model_dump(mode="json") for chunk in chunks}
+        self.dense = list(dense)
+        self.sparse = list(sparse)
+        self.exists = exists
+        self.info = info if info is not None else hybrid_info(len(self.dense))
+        self.calls = []  # (method, arguments) in call order
+
+    def collection_exists(self, collection):
+        self.calls.append(("collection_exists", {"collection": collection}))
+        return self.exists
+
+    def get_collection(self, collection):
+        self.calls.append(("get_collection", {"collection": collection}))
+        return self.info
+
+    def query_points(self, collection, **arguments):
+        self.calls.append(("query_points", {"collection": collection, **arguments}))
+        is_sparse = isinstance(arguments["query"], SparseVector)
+        hits = self.sparse if is_sparse else self.dense
+        if "query_filter" in arguments:  # a MatchAny on the article, the only filter in use
+            wanted = arguments["query_filter"].must[0].match.any
+            hits = [hit for hit in hits if self.payloads[hit[0]]["article"] in wanted]
+        points = [
+            SimpleNamespace(
+                id=point_id(chunk_id),
+                score=score,
+                payload=self.payloads[chunk_id] if arguments["with_payload"] else None,
+            )
+            for chunk_id, score in hits
+        ]
+        return SimpleNamespace(points=points[: arguments["limit"]])
+
+    def queries(self):
+        return [arguments for method, arguments in self.calls if method == "query_points"]
+
+
+@pytest.fixture
+def outside_chunks(all_chunks):
+    return [chunk for chunk in all_chunks if chunk.article in OUTSIDE_ARTICLES]
+
+
+@pytest.fixture
+def scripted(outside_chunks, fake_embedder):
+    """Build a retriever over a scripted client; returns (retriever, client)."""
+
+    def _build(mode, embedder=fake_embedder, **script):
+        client = ScriptedClient(outside_chunks, **script)
+        return Retriever(client, embedder, "scripted", mode=mode), client
+
+    return _build
+
+
+def summary(results):
+    return [(r.chunk.id, r.score, r.fusion_score, r.dense_rank, r.sparse_rank) for r in results]
+
+
+def test_the_hybrid_test_questions_stay_outside_the_evaluation_set():
+    questions = load_questions(REPO_ROOT / "eval" / "questions.jsonl")
+    asked = {question.question.casefold() for question in questions}
+
+    assert not asked & {text.casefold() for text in OUTSIDE_QUESTIONS + QUESTIONS_WITHOUT_TERMS}
+    gold = {article for question in questions for article in question.gold_articles}
+    assert not gold & set(OUTSIDE_ARTICLES)
+
+
+def test_dense_mode_makes_the_same_single_query_as_before(scripted, fake_embedder):
+    retriever, client = scripted("dense")
+
+    results = retriever.retrieve(CONTRACTOR_QUESTION, k=3)
+
+    vector = fake_embedder.embed_query(CONTRACTOR_QUESTION).tolist()
+    # No metadata read, no "using", no search parameters.
+    assert client.calls == [
+        ("collection_exists", {"collection": "scripted"}),
+        (
+            "query_points",
+            {"collection": "scripted", "query": vector, "limit": 3, "with_payload": True},
+        ),
+    ]
+    assert summary(results) == [
+        (chunk_id, score, None, None, None) for chunk_id, score in DENSE_HITS[:3]
+    ]
+
+
+def test_the_default_mode_is_dense(client, fake_embedder):
+    assert Retriever(client, fake_embedder, "any").mode == "dense"
+    assert RETRIEVAL_MODES == ("dense", "sparse", "hybrid")
+
+
+def test_an_unknown_mode_is_rejected(client, fake_embedder):
+    with pytest.raises(ValueError, match="unknown retrieval mode: 'bm25'"):
+        Retriever(client, fake_embedder, "any", mode="bm25")
+
+
+def test_default_retriever_ships_dense_with_promotion_on_the_old_collection(wired):
+    retriever = default_retriever()
+
+    assert (retriever.mode, retriever.promote) == ("dense", True)
+    assert retriever.collection == wired.settings.collection_name
+
+
+@pytest.mark.parametrize("mode", BM25_MODES)
+def test_bm25_modes_query_both_branches_at_the_metadata_depth(scripted, fake_embedder, mode):
+    retriever, client = scripted(mode)
+
+    retriever.retrieve(CONTRACTOR_QUESTION, k=2)
+
+    terms = query_vector(CONTRACTOR_QUESTION)
+    assert client.calls == [
+        ("collection_exists", {"collection": "scripted"}),
+        ("get_collection", {"collection": "scripted"}),
+        (
+            "query_points",
+            {
+                "collection": "scripted",
+                "query": fake_embedder.embed_query(CONTRACTOR_QUESTION).tolist(),
+                "limit": 5,
+                "with_payload": True,
+                "search_params": SearchParams(exact=True),
+            },
+        ),
+        (
+            "query_points",
+            {
+                "collection": "scripted",
+                "query": SparseVector(indices=list(terms.indices), values=list(terms.values)),
+                "using": "bm25_ub",
+                "limit": 5,
+                "with_payload": False,
+            },
+        ),
+    ]
+
+
+@pytest.mark.parametrize("question", OUTSIDE_QUESTIONS + QUESTIONS_WITHOUT_TERMS)
+@pytest.mark.parametrize("mode", RETRIEVAL_MODES)
+def test_no_mode_ever_asks_the_server_to_fuse(scripted, mode, question):
+    retriever, client = scripted(mode)
+
+    retriever.retrieve(question)
+
+    assert client.queries()
+    for arguments in client.queries():
+        # Only a plain dense vector or a plain sparse vector: no prefetch, no fusion query.
+        assert "prefetch" not in arguments
+        assert isinstance(arguments["query"], list | SparseVector)
+
+
+@pytest.mark.parametrize("question", QUESTIONS_WITHOUT_TERMS)
+@pytest.mark.parametrize("mode", BM25_MODES)
+def test_an_empty_sparse_vector_is_never_sent(scripted, mode, question):
+    retriever, client = scripted(mode)
+
+    retriever.retrieve(question)
+
+    assert len(client.queries()) == 1
+    assert isinstance(client.queries()[0]["query"], list)
+
+
+def test_hybrid_returns_the_fused_order_with_cosine_scores_and_ranks(scripted):
+    retriever, _ = scripted("hybrid")
+
+    results = retriever.retrieve(CONTRACTOR_QUESTION, k=5)
+
+    assert summary(results) == [
+        (D92_K1, 0.9, 123 / 3782, 1, 2),  # 1/61 + 1/62
+        (D100_K2, 0.7, 124 / 3843, 3, 1),  # 1/63 + 1/61
+        (D77, 0.5, 128 / 4095, 5, 3),  # 1/65 + 1/63
+        (D100_K1, 0.8, 1 / 62, 2, None),
+        (D205_K1, 0.6, 1 / 64, 4, None),
+    ]
+
+
+def test_sparse_returns_only_its_hits_with_dense_cosines_and_both_ranks(scripted):
+    retriever, _ = scripted("sparse")
+
+    results = retriever.retrieve(CONTRACTOR_QUESTION, k=5)
+
+    assert summary(results) == [
+        (D100_K2, 0.7, None, 3, 1),
+        (D92_K1, 0.9, None, 1, 2),
+        (D77, 0.5, None, 5, 3),
+    ]
+
+
+def test_equal_cosines_are_ranked_by_chunk_id(scripted):
+    # The server lists khoản 3 first.
+    retriever, _ = scripted("hybrid", dense=[(D205_K3, 0.5), (D205_K2, 0.5)], sparse=[])
+
+    results = retriever.retrieve(LOCKOUT_QUESTION)
+
+    assert [(r.chunk.id, r.dense_rank) for r in results] == [(D205_K2, 1), (D205_K3, 2)]
+
+
+def test_equal_bm25_scores_are_ranked_by_dense_rank(scripted):
+    # Khoản 3 is the better dense match; neither the server order nor the chunk id says so.
+    retriever, _ = scripted(
+        "sparse",
+        dense=[(D205_K3, 0.8), (D205_K2, 0.7)],
+        sparse=[(D205_K2, 5.0), (D205_K3, 5.0)],
+    )
+
+    results = retriever.retrieve(LOCKOUT_QUESTION)
+
+    assert [(r.chunk.id, r.dense_rank, r.sparse_rank) for r in results] == [
+        (D205_K3, 1, 1),
+        (D205_K2, 2, 2),
+    ]
+
+
+@pytest.mark.parametrize("question", QUESTIONS_WITHOUT_TERMS)
+def test_hybrid_without_sparse_terms_returns_the_dense_ranking(scripted, question):
+    retriever, _ = scripted("hybrid")
+
+    assert summary(retriever.retrieve(question, k=5)) == DENSE_ONLY_SUMMARY
+
+
+def test_hybrid_without_sparse_hits_returns_the_dense_ranking(scripted):
+    retriever, client = scripted("hybrid", sparse=[])
+
+    assert summary(retriever.retrieve(CONTRACTOR_QUESTION, k=5)) == DENSE_ONLY_SUMMARY
+    assert len(client.queries()) == 2
+
+
+@pytest.mark.parametrize("question", QUESTIONS_WITHOUT_TERMS)
+def test_sparse_without_terms_returns_nothing(scripted, question):
+    retriever, _ = scripted("sparse")
+
+    assert retriever.retrieve(question) == []
+
+
+def test_sparse_without_hits_returns_nothing(scripted):
+    retriever, _ = scripted("sparse", sparse=[])
+
+    assert retriever.retrieve(CONTRACTOR_QUESTION) == []
+
+
+@pytest.mark.parametrize("mode", BM25_MODES)
+def test_non_positive_sparse_scores_are_not_hits(scripted, mode):
+    retriever, _ = scripted(mode, sparse=[(D77, 0.0), (D205_K1, -1.0)])
+
+    results = retriever.retrieve(CONTRACTOR_QUESTION, k=5)
+
+    assert summary(results) == ([] if mode == "sparse" else DENSE_ONLY_SUMMARY)
+
+
+@pytest.mark.parametrize("mode", RETRIEVAL_MODES)
+def test_an_empty_dense_query_means_an_empty_collection(scripted, mode):
+    retriever, client = scripted(mode, dense=[], info=hybrid_info(5))
+
+    with pytest.raises(CollectionNotIndexedError, match="collection scripted is empty") as info:
+        retriever.retrieve(CONTRACTOR_QUESTION)
+
+    assert (HYBRID_INDEX_COMMAND in str(info.value)) == (mode != "dense")
+    assert len(client.queries()) == 1
+
+
+@pytest.mark.parametrize("mode", BM25_MODES)
+def test_a_missing_collection_names_the_hybrid_command(scripted, mode):
+    retriever, client = scripted(mode, embedder=NoEmbedder(), exists=False)
+
+    with pytest.raises(CollectionNotIndexedError, match="does not exist") as info:
+        retriever.retrieve(CONTRACTOR_QUESTION)
+
+    assert HYBRID_INDEX_COMMAND in str(info.value)
+    assert [method for method, _ in client.calls] == ["collection_exists"]
+
+
+@pytest.mark.parametrize(
+    ("info", "complaint"),
+    [
+        (hybrid_info(5, sparse_vectors={}), "bm25_ub"),
+        (hybrid_info(5, tokenizer_version="vi-syl-bigram-v0"), "tokenizer_version"),
+    ],
+)
+@pytest.mark.parametrize("mode", BM25_MODES)
+def test_a_collection_that_cannot_serve_bm25_is_rejected_before_embedding(
+    scripted, mode, info, complaint
+):
+    retriever, client = scripted(mode, embedder=NoEmbedder(), info=info)
+
+    with pytest.raises(InvalidCollectionDataError, match=complaint) as error:
+        retriever.retrieve(CONTRACTOR_QUESTION)
+
+    assert HYBRID_INDEX_COMMAND in str(error.value)
+    assert client.queries() == []
+
+
+@pytest.mark.parametrize("mode", BM25_MODES)
+def test_a_sparse_hit_without_a_dense_score_is_an_error(scripted, mode):
+    # The collection holds more points than its metadata says, so the dense query stops short.
+    retriever, _ = scripted(mode, info=hybrid_info(2))
+
+    with pytest.raises(InvalidCollectionDataError, match="scripted") as info:
+        retriever.retrieve(CONTRACTOR_QUESTION)
+
+    assert HYBRID_INDEX_COMMAND in str(info.value)
+
+
+@pytest.mark.parametrize(("mode", "length"), [("sparse", 3), ("hybrid", 5)])
+def test_rank_keeps_the_full_ranking_and_retrieve_cuts_it(scripted, fake_embedder, mode, length):
+    retriever, client = scripted(mode)
+
+    ranking = retriever.rank(CONTRACTOR_QUESTION, k=2)
+
+    assert len(ranking.results) == length
+    assert ranking.dense_vector == fake_embedder.embed_query(CONTRACTOR_QUESTION).tolist()
+    assert len(client.queries()) == 2
+    assert retriever.retrieve(CONTRACTOR_QUESTION, k=2) == ranking.results[:2]
+
+
+def test_the_dense_ranking_stops_at_k(scripted, fake_embedder):
+    retriever, _ = scripted("dense")
+
+    ranking = retriever.rank(CONTRACTOR_QUESTION, k=2)
+
+    assert [r.chunk.id for r in ranking.results] == [D92_K1, D100_K1]
+    assert ranking.dense_vector == fake_embedder.embed_query(CONTRACTOR_QUESTION).tolist()
+
+
+@pytest.mark.parametrize("mode", BM25_MODES)
+def test_bm25_modes_reject_a_bad_request_before_any_call(scripted, mode):
+    retriever, client = scripted(mode, embedder=NoEmbedder())
+
+    with pytest.raises(InvalidQueryError, match="query is empty"):
+        retriever.retrieve("   ")
+    with pytest.raises(InvalidQueryError, match="k must be at least 1"):
+        retriever.retrieve(CONTRACTOR_QUESTION, k=0)
+
+    assert client.calls == []
+
+
+@pytest.mark.parametrize("mode", BM25_MODES)
+def test_a_bad_payload_below_the_cut_names_the_hybrid_command(scripted, mode):
+    retriever, client = scripted(mode)
+    client.payloads[D205_K1] = {"legacy_field": "PAYLOAD-MARKER"}
+
+    with pytest.raises(InvalidCollectionDataError, match="incompatible") as info:
+        retriever.retrieve(CONTRACTOR_QUESTION, k=1)
+
+    assert HYBRID_INDEX_COMMAND in str(info.value)
+    assert "PAYLOAD-MARKER" not in str(info.value)
+
+
+@pytest.mark.parametrize("failing", ["get_collection", "dense query", "sparse query"])
+def test_a_server_failure_in_a_bm25_mode_becomes_qdrant_unavailable(scripted, monkeypatch, failing):
+    retriever, client = scripted("hybrid")
+    answer = client.query_points
+
+    def query_points(collection, **arguments):
+        asked = "sparse query" if isinstance(arguments["query"], SparseVector) else "dense query"
+        if asked == failing:
+            fail_transport()
+        return answer(collection, **arguments)
+
+    monkeypatch.setattr(client, "query_points", query_points)
+    if failing == "get_collection":
+        monkeypatch.setattr(client, "get_collection", fail_transport)
+
+    with pytest.raises(QdrantUnavailableError):
+        retriever.retrieve(CONTRACTOR_QUESTION)
+
+
+@pytest.fixture
+def hybrid_build(client, all_chunks, outside_chunks, fake_embedder):
+    """A collection made by the index code in local mode, which applies the IDF modifier."""
+    chunks = all_chunks[:12] + outside_chunks
+    vectors = fake_embedder.embed_documents([chunk.context_text for chunk in chunks])
+    index_hybrid_chunks(
+        chunks,
+        vectors,
+        client,
+        "hybrid",
+        model_name=fake_embedder.model_name,
+        chunks_sha256="0" * 64,
+    )
+    return SimpleNamespace(
+        size=len(chunks),
+        retrievers={
+            mode: Retriever(client, fake_embedder, "hybrid", mode=mode) for mode in RETRIEVAL_MODES
+        },
+    )
+
+
+# Local mode searches exactly by brute force and warns that the exact=True flag changes nothing.
+@pytest.mark.filterwarnings("ignore:Local mode performs exact:UserWarning")
+@pytest.mark.parametrize(
+    ("question", "article"),
+    [(CONTRACTOR_QUESTION, 100), (COUNCIL_QUESTION, 92), (LOCKOUT_QUESTION, 205)],
+)
+def test_bm25_modes_work_on_a_real_hybrid_build(hybrid_build, question, article):
+    retrievers, size = hybrid_build.retrievers, hybrid_build.size
+    dense = retrievers["dense"].retrieve(question, k=size)
+    sparse = retrievers["sparse"].retrieve(question, k=size)
+    hybrid = retrievers["hybrid"].retrieve(question, k=size)
+
+    # The fake dense vectors are random: the right article comes first because of BM25.
+    assert sparse[0].chunk.article == article
+    assert [r.sparse_rank for r in sparse] == list(range(1, len(sparse) + 1))
+    cosines = {r.chunk.id: r.score for r in dense}
+    for result in sparse + hybrid:
+        assert result.score == pytest.approx(cosines[result.chunk.id])
+        assert dense[result.dense_rank - 1].chunk.id == result.chunk.id
+    expected = reciprocal_rank_fusion([r.chunk.id for r in dense], [r.chunk.id for r in sparse])
+    assert len(hybrid) == size
+    assert [(r.chunk.id, r.fusion_score, r.dense_rank, r.sparse_rank) for r in hybrid] == [
+        (item.key, item.score, item.dense_rank, item.sparse_rank) for item in expected
+    ]
+
+
+# --- article promotion ------------------------------------------------------------
+
+# As above, no question of the evaluation set has one of these articles (or 24 and 32) as gold.
+PROMOTION_ARTICLES = (*OUTSIDE_ARTICLES, 154)
+NAMED_205 = "Điều 205 buộc phải báo cho cơ quan nào khi đóng cửa nơi làm việc?"
+NAMED_92_AND_205 = "So sánh giúp tôi Điều 92 với Điều 205."
+NAMED_77 = "Điều 77 yêu cầu gửi bản thỏa ước trong mấy ngày?"
+NAMED_ABSENT = "Điều 24 có mấy khoản?"  # no chunk of Điều 24 is in these test collections
+NAMED_ELSEWHERE = "Điều 32 của Bộ luật Tố tụng dân sự nói gì?"
+PROMOTION_QUESTIONS = (NAMED_205, NAMED_92_AND_205, NAMED_77, NAMED_ABSENT, NAMED_ELSEWHERE)
+UNNAMED_QUESTIONS = (COUNCIL_QUESTION, NAMED_ELSEWHERE, "Cho mình hỏi điều 1 chút")
+PROMOTING_MODES = ("dense", "hybrid")
+
+D92_K2 = "45-2019-QH14:d92:k2"
+# The ten clauses of Điều 154.
+A = [f"45-2019-QH14:d154:k{clause}" for clause in (1, 2, 3, 4, 5, 6, 7, 8, "8a", 9)]
+# Best first. Khoản 2 of Điều 205 is second; its other two clauses are far below the top 10.
+ORDER = [A[0], D205_K2, *A[1:], D92_K1, D205_K1, D100_K1, D92_K2, D205_K3, D77]
+RANKED = [(chunk_id, round(0.9 - 0.01 * place, 2)) for place, chunk_id in enumerate(ORDER)]
+# What NAMED_205 gives for each k: m = 0, 0, 1, 3, 3, 3 promoted, then the original top k.
+PROMOTED_205 = {
+    1: [A[0]],
+    2: [A[0], D205_K2],
+    3: [D205_K2, A[0], A[1]],
+    5: [D205_K2, D205_K1, D205_K3, A[0], A[1]],
+    8: [D205_K2, D205_K1, D205_K3, *A[:5]],
+    10: [D205_K2, D205_K1, D205_K3, *A[:7]],
+}
+
+
+@pytest.fixture
+def promotion_chunks(all_chunks):
+    return [chunk for chunk in all_chunks if chunk.article in PROMOTION_ARTICLES]
+
+
+@pytest.fixture
+def promoting(promotion_chunks, fake_embedder):
+    """Like ``scripted``, over a longer ranking and with promotion on unless told otherwise."""
+
+    def _build(mode, promote=True, dense=RANKED, sparse=()):
+        client = ScriptedClient(promotion_chunks, dense=dense, sparse=sparse)
+        retriever = Retriever(client, fake_embedder, "scripted", mode=mode, promote=promote)
+        return retriever, client
+
+    return _build
+
+
+def ids(results):
+    return [result.chunk.id for result in results]
+
+
+def test_the_promotion_questions_stay_outside_the_evaluation_set():
+    questions = load_questions(REPO_ROOT / "eval" / "questions.jsonl")
+    asked = {question.question.casefold() for question in questions}
+
+    assert not asked & {text.casefold() for text in PROMOTION_QUESTIONS + UNNAMED_QUESTIONS}
+    gold = {article for question in questions for article in question.gold_articles}
+    assert not gold & {*PROMOTION_ARTICLES, 24, 32}
+
+
+def test_promotion_is_off_unless_asked_for(promoting, client, fake_embedder):
+    assert Retriever(client, fake_embedder, "any").promote is False
+
+    retriever, scripted_client = promoting("dense", promote=False)
+
+    assert ids(retriever.retrieve(NAMED_205, k=5)) == ORDER[:5]
+    assert len(scripted_client.queries()) == 1
+
+
+@pytest.mark.parametrize("k", PROMOTED_205)
+@pytest.mark.parametrize("mode", PROMOTING_MODES)
+def test_promotion_caps_the_slots_and_fills_to_exactly_k(promoting, mode, k):
+    retriever, _ = promoting(mode)
+
+    assert ids(retriever.retrieve(NAMED_205, k=k)) == PROMOTED_205[k]
+
+
+@pytest.mark.parametrize(("k", "queries"), [(1, 1), (2, 1), (3, 2), (10, 2)])
+def test_dense_mode_queries_again_only_when_a_slot_is_free(promoting, k, queries):
+    retriever, client = promoting("dense")
+
+    retriever.retrieve(NAMED_205, k=k)
+
+    assert len(client.queries()) == queries
+
+
+def test_dense_promotion_makes_one_filtered_query(promoting, fake_embedder):
+    retriever, client = promoting("dense")
+
+    retriever.retrieve(NAMED_92_AND_205, k=4)
+
+    vector = fake_embedder.embed_query(NAMED_92_AND_205).tolist()
+    plain = {"collection": "scripted", "query": vector, "limit": 4, "with_payload": True}
+    only_named = Filter(must=[FieldCondition(key="article", match=MatchAny(any=[92, 205]))])
+    assert client.calls == [
+        ("collection_exists", {"collection": "scripted"}),
+        ("query_points", plain),
+        (
+            "query_points",
+            plain
+            | {"limit": 2, "query_filter": only_named, "search_params": SearchParams(exact=True)},
+        ),
+    ]
+
+
+@pytest.mark.parametrize("sparse", [(), ((D205_K3, 9.0), (A[0], 5.0))])
+def test_hybrid_promotion_makes_no_extra_query(promoting, sparse):
+    plain, plain_client = promoting("hybrid", promote=False, sparse=sparse)
+    retriever, client = promoting("hybrid", sparse=sparse)
+
+    plain.retrieve(NAMED_205, k=5)
+    retriever.retrieve(NAMED_205, k=5)
+
+    assert client.calls == plain_client.calls
+
+
+def test_hybrid_takes_candidates_from_the_fused_ranking(promoting):
+    # BM25 lifts khoản 3, the last of the three in the dense ranking, to the top of the fusion.
+    retriever, _ = promoting("hybrid", sparse=[(D205_K3, 9.0)])
+
+    results = retriever.retrieve(NAMED_205, k=5)
+
+    assert ids(results) == [D205_K3, D205_K2, D205_K1, A[0], A[1]]
+
+
+def test_promoted_hybrid_chunks_keep_their_scores_and_ranks(promoting):
+    retriever, _ = promoting("hybrid", sparse=[(D205_K3, 9.0), (A[0], 5.0)])
+    original = {r.chunk.id: r for r in retriever.rank(NAMED_205, k=5).results}
+
+    results = retriever.retrieve(NAMED_205, k=5)
+
+    assert results == [original[chunk_id] for chunk_id in ids(results)]
+    # Khoản 3 is first now and still says where it stood in each branch.
+    assert summary(results)[0] == (
+        D205_K3,
+        dict(RANKED)[D205_K3],
+        137 / 4636,  # 1/(60 + 16) + 1/(60 + 1)
+        16,
+        1,
+    )
+
+
+def test_promoted_dense_chunks_carry_their_cosine_and_no_ranks(promoting):
+    retriever, _ = promoting("dense")
+
+    results = retriever.retrieve(NAMED_205, k=3)
+
+    cosines = dict(RANKED)
+    assert summary(results) == [
+        (chunk_id, cosines[chunk_id], None, None, None) for chunk_id in PROMOTED_205[3]
+    ]
+
+
+@pytest.mark.parametrize("mode", PROMOTING_MODES)
+def test_the_slots_are_shared_by_all_named_articles(promoting, mode):
+    retriever, _ = promoting(mode)
+
+    results = retriever.retrieve(NAMED_92_AND_205, k=5)
+
+    # The first three chunks of either article in the original order.
+    assert ids(results) == [D205_K2, D92_K1, D205_K1, A[0], A[1]]
+
+
+@pytest.mark.parametrize("mode", PROMOTING_MODES)
+def test_fewer_candidates_than_slots_are_all_promoted(promoting, mode):
+    retriever, _ = promoting(mode)
+
+    results = retriever.retrieve(NAMED_77, k=5)
+
+    assert ids(results) == [D77, A[0], D205_K2, A[1], A[2]]
+
+
+@pytest.mark.parametrize("question", UNNAMED_QUESTIONS)
+@pytest.mark.parametrize("mode", RETRIEVAL_MODES)
+def test_a_question_that_names_no_article_is_unchanged(promoting, mode, question):
+    sparse = [(D205_K3, 9.0), (A[0], 5.0)]
+    plain, plain_client = promoting(mode, promote=False, sparse=sparse)
+    retriever, client = promoting(mode, sparse=sparse)
+
+    assert retriever.retrieve(question, k=5) == plain.retrieve(question, k=5)
+    assert client.calls == plain_client.calls
+
+
+def test_sparse_mode_never_promotes(promoting):
+    sparse = [(A[0], 9.0), (A[1], 8.0), (A[2], 7.0), (D205_K1, 1.0)]
+    retriever, client = promoting("sparse", sparse=sparse)
+
+    results = retriever.retrieve(NAMED_205, k=3)
+
+    assert ids(results) == A[:3]
+    assert len(client.queries()) == 2
+    assert all("query_filter" not in arguments for arguments in client.queries())
+
+
+@pytest.mark.parametrize("mode", PROMOTING_MODES)
+def test_rank_is_never_promoted(promoting, mode):
+    plain, plain_client = promoting(mode, promote=False)
+    retriever, client = promoting(mode)
+
+    assert retriever.rank(NAMED_205, k=5) == plain.rank(NAMED_205, k=5)
+    assert client.calls == plain_client.calls
+
+
+def test_equal_promoted_cosines_are_ordered_by_chunk_id(promoting):
+    # The server lists khoản 3 before khoản 2.
+    retriever, _ = promoting("dense", dense=[(A[0], 0.9), (D205_K3, 0.5), (D205_K2, 0.5)])
+
+    assert ids(retriever.retrieve(NAMED_205, k=5)) == [D205_K2, D205_K3, A[0]]
+
+
+@pytest.mark.parametrize("mode", PROMOTING_MODES)
+def test_a_named_article_without_a_chunk_leaves_the_ranking(promoting, mode):
+    retriever, _ = promoting(mode)
+
+    assert ids(retriever.retrieve(NAMED_ABSENT, k=5)) == ORDER[:5]
+
+
+def test_a_failed_promotion_query_becomes_qdrant_unavailable(promoting, monkeypatch):
+    retriever, client = promoting("dense")
+    answer = client.query_points
+
+    def query_points(collection, **arguments):
+        if "query_filter" in arguments:
+            fail_transport()
+        return answer(collection, **arguments)
+
+    monkeypatch.setattr(client, "query_points", query_points)
+
+    with pytest.raises(QdrantUnavailableError):
+        retriever.retrieve(NAMED_205)
+
+
+def test_a_bad_payload_in_a_promotion_hit_is_reported(promoting):
+    retriever, client = promoting("dense")
+    # Below the top 5, so only the filtered query reads it.
+    client.payloads[D205_K1] = {"article": 205, "legacy_field": "PAYLOAD-MARKER"}
+
+    with pytest.raises(InvalidCollectionDataError, match="incompatible") as info:
+        retriever.retrieve(NAMED_205, k=5)
+
+    assert "uv run python -m ingestion.index" in str(info.value)
+    assert HYBRID_INDEX_COMMAND not in str(info.value)
+    assert "PAYLOAD-MARKER" not in str(info.value)
+
+
+@pytest.mark.filterwarnings("ignore:Local mode performs exact:UserWarning")
+@pytest.mark.parametrize("question", PROMOTION_QUESTIONS)
+@pytest.mark.parametrize("mode", PROMOTING_MODES)
+def test_promotion_works_on_a_local_qdrant(client, promotion_chunks, fake_embedder, mode, question):
+    """The real article filter: both modes promote from their own full ranking."""
+    vectors = fake_embedder.embed_documents([chunk.context_text for chunk in promotion_chunks])
+    index_hybrid_chunks(
+        promotion_chunks,
+        vectors,
+        client,
+        "hybrid",
+        model_name=fake_embedder.model_name,
+        chunks_sha256="0" * 64,
+    )
+    plain = Retriever(client, fake_embedder, "hybrid", mode=mode)
+    retriever = Retriever(client, fake_embedder, "hybrid", mode=mode, promote=True)
+    named = {NAMED_205: {205}, NAMED_92_AND_205: {92, 205}, NAMED_77: {77}}.get(question, set())
+    full = plain.retrieve(question, k=len(promotion_chunks))
+
+    results = retriever.retrieve(question, k=5)
+
+    first = [r.chunk.id for r in full if r.chunk.article in named][:3]
+    rest = [r.chunk.id for r in full[:5] if r.chunk.id not in first]
+    assert ids(results) == (first + rest)[:5]
+    cosines = {r.chunk.id: r.score for r in full}
+    for result in results:
+        assert result.score == pytest.approx(cosines[result.chunk.id])
+
+
+@pytest.mark.parametrize(
+    "modules",
+    [("app.rag.retriever", "app.rag.article_refs"), ("app.rag.article_refs", "app.rag.retriever")],
+)
+def test_the_parser_and_the_retriever_import_in_either_order(modules):
+    # A fresh interpreter: here both are already imported, which would hide an import cycle.
+    code = "\n".join(f"import {module}" for module in modules)
+
+    done = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+
+    assert done.returncode == 0, done.stderr
+
+
+# --- the configuration the settings ship ------------------------------------------
+
+NAMED_24 = "Điều 24 quy định gì"  # the fixture of spec §7.4
+UNNAMED_24 = "Bản thỏa thuận thử việc gồm những gì?"
+D24 = [f"45-2019-QH14:d24:k{clause}" for clause in (1, 2, 3)]
+# Khoản 2 of Điều 24 is the best of its clauses, and all three are below the top 3.
+SHIPPED_ORDER = [*A[:4], D24[1], D24[0], D24[2]]
+SHIPPED_DENSE = [(name, round(0.9 - 0.01 * place, 2)) for place, name in enumerate(SHIPPED_ORDER)]
+
+
+@pytest.fixture
+def shipped(monkeypatch, all_chunks, fake_embedder):
+    """retrieve() as search and ask call it: settings from the environment, a fake client."""
+    chunks = [chunk for chunk in all_chunks if chunk.article in (24, 154)]
+    # BM25 finds khoản 3 only, which the fusion then puts first.
+    client = ScriptedClient(chunks, dense=SHIPPED_DENSE, sparse=[(D24[2], 9.0)])
+    monkeypatch.setattr(retriever_module, "connect", lambda _settings: client)
+    monkeypatch.setattr(retriever_module, "build_embedder", lambda _settings: fake_embedder)
+    return client
+
+
+def asked_collections(client):
+    return {arguments["collection"] for _method, arguments in client.calls}
+
+
+def article_filters(client):
+    """The article condition of every filtered query."""
+    return [
+        arguments["query_filter"].must[0].match
+        for arguments in client.queries()
+        if "query_filter" in arguments
+    ]
+
+
+def test_the_shipped_test_questions_stay_outside_the_evaluation_set():
+    questions = load_questions(REPO_ROOT / "eval" / "questions.jsonl")
+    asked = {question.question.casefold() for question in questions}
+
+    assert not asked & {NAMED_24.casefold(), UNNAMED_24.casefold()}
+
+
+def test_by_default_retrieve_promotes_on_the_dense_only_collection(shipped):
+    results = retrieve(NAMED_24, k=5)
+
+    assert asked_collections(shipped) == {Settings().collection_name}
+    assert article_filters(shipped) == [MatchAny(any=[24])]
+    assert ids(results) == [D24[1], D24[0], D24[2], A[0], A[1]]
+
+
+# mode, promotion, hybrid collection, the top 3 for the question that names Điều 24
+SHIPPED_CONFIGURATIONS = [
+    ("dense", "true", False, [D24[1], A[0], A[1]]),
+    ("dense", "false", False, [A[0], A[1], A[2]]),
+    # The fusion already puts khoản 3 first; promotion takes the one free slot for it.
+    ("hybrid", "true", True, [D24[2], A[0], A[1]]),
+    ("hybrid", "false", True, [D24[2], A[0], A[1]]),
+    ("sparse", "false", True, [D24[2]]),
+]
+
+
+@pytest.mark.parametrize(("mode", "promotion", "hybrid", "top"), SHIPPED_CONFIGURATIONS)
+def test_the_settings_choose_what_retrieve_queries(
+    shipped, monkeypatch, mode, promotion, hybrid, top
+):
+    monkeypatch.setenv("RETRIEVAL_MODE", mode)
+    monkeypatch.setenv("ARTICLE_PROMOTION", promotion)
+    settings = Settings()
+    collection = settings.hybrid_collection_name if hybrid else settings.collection_name
+
+    results = retrieve(NAMED_24, k=3)
+
+    assert asked_collections(shipped) == {collection}
+    sparse_queries = [q for q in shipped.queries() if isinstance(q["query"], SparseVector)]
+    assert len(sparse_queries) == (0 if mode == "dense" else 1)
+    # Only dense mode asks again: hybrid mode promotes from the ranking it already has.
+    expected = [MatchAny(any=[24])] if (mode, promotion) == ("dense", "true") else []
+    assert article_filters(shipped) == expected
+    assert ids(results) == top
+
+
+@pytest.mark.parametrize(
+    ("promotion", "named_in_top_3"),
+    [("true", [D24[2], D24[1], D24[0]]), ("false", [D24[2]])],
+)
+def test_the_promotion_setting_reorders_a_hybrid_ranking(
+    shipped, monkeypatch, promotion, named_in_top_3
+):
+    monkeypatch.setenv("RETRIEVAL_MODE", "hybrid")
+    monkeypatch.setenv("ARTICLE_PROMOTION", promotion)
+
+    results = retrieve(NAMED_24, k=5)
+
+    assert [name for name in ids(results)[:3] if name in D24] == named_in_top_3
+    assert article_filters(shipped) == []
+
+
+@pytest.mark.parametrize("mode", ["dense", "hybrid"])
+def test_no_promotion_query_for_a_question_that_names_no_article(shipped, monkeypatch, mode):
+    monkeypatch.setenv("RETRIEVAL_MODE", mode)
+
+    retrieve(UNNAMED_24, k=5)
+
+    assert default_retriever().promote is True
+    assert article_filters(shipped) == []
+    assert len(shipped.queries()) == (1 if mode == "dense" else 2)

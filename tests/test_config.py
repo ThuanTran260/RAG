@@ -2,6 +2,7 @@ import pytest
 from pydantic import SecretStr, ValidationError
 
 from app.core.config import REPO_ROOT, Settings, get_settings, model_key, model_slug
+from app.rag import search
 
 
 def test_defaults():
@@ -20,6 +21,16 @@ def test_environment_overrides_defaults(monkeypatch):
     settings = Settings(_env_file=None)
     assert settings.qdrant_url == "http://qdrant:6333"
     assert settings.collection_name == ("labor_law_vn__aiteamvn-vietnamese-embedding--5d5026633ba6")
+
+
+def test_hybrid_collection_name_extends_the_dense_one():
+    settings = Settings(_env_file=None)
+    assert settings.hybrid_collection_name == ("labor_law_vn__baai-bge-m3--d790e737453c__hybrid-v1")
+
+
+def test_hybrid_collection_name_follows_the_collection_and_the_model():
+    settings = Settings(_env_file=None, qdrant_collection="other", embedding_model="fake/model")
+    assert settings.hybrid_collection_name == "other__fake-model--da372fba630a__hybrid-v1"
 
 
 def test_env_file_is_read_and_unknown_keys_are_ignored(tmp_path):
@@ -141,6 +152,81 @@ def test_blank_llm_provider_and_model_are_rejected(field, value):
 def test_llm_provider_and_model_are_stripped():
     settings = Settings(_env_file=None, llm_provider=" gemini ", llm_model=" m-1 ")
     assert (settings.llm_provider, settings.llm_model) == ("gemini", "m-1")
+
+
+def test_retrieval_defaults_to_dense_with_article_promotion():
+    settings = Settings(_env_file=None)
+    assert (settings.retrieval_mode, settings.article_promotion) == ("dense", True)
+    assert settings.retrieval_collection_name == settings.collection_name
+
+
+@pytest.mark.parametrize(
+    ("mode", "promotion", "hybrid_collection"),
+    [
+        ("dense", "false", False),
+        ("hybrid", "true", True),
+        ("hybrid", "false", True),
+        ("sparse", "false", True),
+    ],
+)
+def test_retrieval_settings_come_from_the_environment(
+    monkeypatch, mode, promotion, hybrid_collection
+):
+    monkeypatch.setenv("RETRIEVAL_MODE", mode)
+    monkeypatch.setenv("ARTICLE_PROMOTION", promotion)
+
+    settings = Settings(_env_file=None)
+
+    assert settings.retrieval_mode == mode
+    assert settings.article_promotion is (promotion == "true")
+    expected = settings.hybrid_collection_name if hybrid_collection else settings.collection_name
+    assert settings.retrieval_collection_name == expected
+
+
+# None leaves promotion at its default, which is on.
+@pytest.mark.parametrize("promotion", [None, "true"])
+def test_sparse_with_promotion_is_rejected_naming_both_variables(monkeypatch, promotion):
+    monkeypatch.setenv("RETRIEVAL_MODE", "sparse")
+    if promotion is not None:
+        monkeypatch.setenv("ARTICLE_PROMOTION", promotion)
+
+    with pytest.raises(ValidationError) as info:
+        Settings(_env_file=None)
+
+    message = str(info.value)
+    for text in ("RETRIEVAL_MODE=sparse", "ARTICLE_PROMOTION=false"):
+        assert text in message
+    # app.rag.ask prints only the field an error sits on, so it must be the one to change.
+    assert [error["loc"] for error in info.value.errors()] == [("article_promotion",)]
+
+
+@pytest.mark.parametrize("mode", ["bm25", "", "Dense"])
+def test_an_unknown_retrieval_mode_names_the_variable(monkeypatch, mode):
+    monkeypatch.setenv("RETRIEVAL_MODE", mode)
+
+    with pytest.raises(ValidationError) as info:
+        Settings(_env_file=None)
+
+    # One error only: the promotion check says nothing about a mode that was rejected.
+    assert [error["loc"] for error in info.value.errors()] == [("retrieval_mode",)]
+    assert "retrieval_mode" in str(info.value)
+
+
+@pytest.mark.parametrize("mode", ["sparse", "bm25"], ids=["sparse with promotion", "unknown"])
+def test_a_retrieval_settings_error_never_shows_the_llm_key(monkeypatch, capsys, mode):
+    monkeypatch.setenv("LLM_API_KEY", "SECRET-MARKER")
+    monkeypatch.setenv("RETRIEVAL_MODE", mode)
+
+    with pytest.raises(ValidationError) as info:
+        Settings(_env_file=None)
+    # Loading the settings fails first, so the command opens no connection and loads no model.
+    assert search.main(["x"]) == 1
+
+    captured = capsys.readouterr()
+    assert "invalid settings" in captured.err
+    assert "SECRET-MARKER" not in str(info.value)
+    assert "SECRET-MARKER" not in captured.err
+    assert captured.out == ""
 
 
 def test_unit_tests_do_not_read_the_repo_env_file():

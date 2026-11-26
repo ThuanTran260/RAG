@@ -1,0 +1,186 @@
+## 1. Tổng quan
+Collection: labor_law_vn__baai-bge-m3--d790e737453c__hybrid-v1
+Chế độ truy xuất: sparse
+Promotion số Điều: tắt
+Model: BAAI/bge-m3
+Bộ câu: 577b8392afeb
+Số câu: direct 45, paraphrase 45, article_ref 12, out_of_scope 25
+
+## 2. Bảng kết quả (hạng tính trên top 10)
+               n   Điều: R@1     R@5    R@10  MRR@10   Khoản: R@1     R@5    R@10  MRR@10
+số chính      90       0,611   0,744   0,811   0,668        0,556   0,711   0,778   0,625
+direct        45       0,933   1,000   1,000   0,959        0,889   1,000   1,000   0,937
+paraphrase    45       0,289   0,489   0,622   0,376        0,222   0,422   0,556   0,313
+article_ref   12       0,750   0,833   1,000   0,786        0,667   0,833   1,000   0,745
+
+## 3. Câu trượt ở hạng 1 (mức Điều)
+- q001 [direct] Người lao động đơn phương chấm dứt hợp đồng lao động thì phải báo trước cho người sử dụng lao động trong thời hạn bao lâu?
+  Điều đúng: 35; top 3: 45-2019-QH14:d36:k3 (0,737), 45-2019-QH14:d36:k2 (0,809), 45-2019-QH14:d35:k1 (0,759)
+- q004 [paraphrase] Chủ bắt mình đi làm dù mình không chịu, lại còn hù dọa, thì luật gọi đó là gì?
+  Điều đúng: 3; top 3: 45-2019-QH14:d52:k1 (0,482), 45-2019-QH14:d49:k2 (0,445), 45-2019-QH14:d154:k3 (0,452)
+- q006 [paraphrase] Đi xin việc mà bên nhận hồ sơ đòi mình trả tiền công giới thiệu, tiền xét hồ sơ thì có đúng luật không?
+  Điều đúng: 11; top 3: 45-2019-QH14:d120:k2 (0,436), 45-2019-QH14:d120:k4 (0,436), 45-2019-QH14:d120:k1 (0,443)
+- q007 [direct] Hợp đồng lao động xác định thời hạn có thời hạn tối đa là bao nhiêu tháng?
+  Điều đúng: 20; top 3: 45-2019-QH14:d35:k1 (0,674), 45-2019-QH14:d36:k2 (0,683), 45-2019-QH14:d20:k1 (0,698)
+- q010 [paraphrase] Vị trí công ty đang tuyển đòi hỏi phải có bằng đại học, vậy giai đoạn làm thử trước khi ký chính thức được kéo dài tối đa bao nhiêu ngày?
+  Điều đúng: 25; top 3: 45-2019-QH14:d93:k2 (0,488), 45-2019-QH14:d152:k3 (0,445), 45-2019-QH14:d123:k2 (0,465)
+- q012 [paraphrase] Sếp tạm đẩy mình sang làm việc không giống như đã ký, thì một năm được đẩy tối đa bao nhiêu ngày mà không cần mình ký giấy chấp thuận?
+  Điều đúng: 29; top 3: 45-2019-QH14:d155 (0,511), 45-2019-QH14:d101:k2 (0,519), 45-2019-QH14:d137:k2 (0,430)
+- q013 [direct] Người sử dụng lao động đơn phương chấm dứt hợp đồng lao động không xác định thời hạn thì phải báo trước ít nhất bao nhiêu ngày?
+  Điều đúng: 36; top 3: 45-2019-QH14:d35:k1 (0,737), 45-2019-QH14:d36:k2 (0,794), 45-2019-QH14:d36:k3 (0,700)
+- q014 [paraphrase] Hợp đồng của tôi chưa ghi ngày kết thúc, công ty muốn cho tôi nghỉ việc thì phải cho tôi hay sớm ít nhất mấy ngày?
+  Điều đúng: 36; top 3: 45-2019-QH14:d41:k1 (0,612), 45-2019-QH14:d27:k1 (0,604), 45-2019-QH14:d33:k1 (0,616)
+- q016 [paraphrase] Tôi nghỉ việc đột ngột không đúng luật thì phải đền cho công ty số tiền lương bao nhiêu?
+  Điều đúng: 40; top 3: 45-2019-QH14:d97:k4 (0,615), 45-2019-QH14:d101:k2 (0,655), 45-2019-QH14:d90:k1 (0,560)
+- q020 [paraphrase] Tôi làm cho công ty hơn một năm thì hết hợp đồng và nghỉ, công ty phải chi cho tôi một khoản tiền, mỗi năm công tác tính bằng bao nhiêu lương?
+  Điều đúng: 46; top 3: 45-2019-QH14:d101:k3 (0,622), 45-2019-QH14:d47:k1 (0,626), 45-2019-QH14:d41:k1 (0,615)
+- q022 [paraphrase] Công ty đổi cơ cấu hoặc công nghệ khiến tôi không còn chỗ làm, tôi đã làm hơn 12 tháng thì mỗi năm công tác công ty phải trả tôi bao nhiêu tháng lương?
+  Điều đúng: 47; top 3: 45-2019-QH14:d42:k3 (0,540), 45-2019-QH14:d42:k1 (0,587), 45-2019-QH14:d42:k5 (0,584)
+- q026 [paraphrase] Công ty phải ngồi lại trao đổi ý kiến với nhân viên ít nhất mấy lần một năm?
+  Điều đúng: 63; top 3: 45-2019-QH14:d44:k2 (0,543), 45-2019-QH14:d42:k6 (0,511), 45-2019-QH14:d201:k4 (0,545)
+- q028 [paraphrase] Công ty và đại diện người lao động ngồi bàn thỏa thuận về quyền lợi chung thì được kéo dài tối đa bao nhiêu ngày?
+  Điều đúng: 70; top 3: 45-2019-QH14:d123:k2 (0,550), 45-2019-QH14:d176:k3 (0,564), 45-2019-QH14:d83 (0,650)
+- q030 [paraphrase] Công ty và đại diện nhân viên thống nhất điều khoản chung mà kém hơn luật nhà nước thì có được không?
+  Điều đúng: 75; top 3: 45-2019-QH14:d213:k1 (0,483), 45-2019-QH14:d185:k2 (0,461), 45-2019-QH14:d185:k4 (0,462)
+- q032 [paraphrase] Bản thỏa thuận chung giữa công ty và đại diện nhân viên thì có giá trị được mấy năm?
+  Điều đúng: 78; top 3: 45-2019-QH14:d154:k2 (0,445), 45-2019-QH14:d154:k1 (0,426), 45-2019-QH14:d196:k2 (0,520)
+- q034 [paraphrase] Bản thỏa thuận chung giữa công ty và đại diện nhân viên sắp hết giá trị, hai bên được bàn chuyện gia hạn hay ký bản mới trong khoảng bao nhiêu ngày trước đó?
+  Điều đúng: 83; top 3: 45-2019-QH14:d20:k2 (0,633), 45-2019-QH14:d83 (0,679), 45-2019-QH14:d154:k2 (0,446)
+- q040 [paraphrase] Tôi làm hỏng máy của công ty, mỗi tháng công ty được giữ lại tối đa bao nhiêu phần trăm số tiền tôi được nhận để đền?
+  Điều đúng: 102; top 3: 45-2019-QH14:d101:k2 (0,538), 45-2019-QH14:d29:k3 (0,525), 45-2019-QH14:d53:k1 (0,483)
+- q042 [paraphrase] Dịp Nguyên đán, người đi làm ở công ty được nghỉ mấy ngày mà vẫn nhận đủ tiền?
+  Điều đúng: 112; top 3: 45-2019-QH14:d137:k4 (0,573), 45-2019-QH14:d115:k1 (0,619), 45-2019-QH14:d154:k1 (0,463)
+- q046 [paraphrase] Nhân viên làm sai, công ty chậm nhất bao lâu sau đó thì không còn được phạt nữa?
+  Điều đúng: 123; top 3: 45-2019-QH14:d97:k4 (0,593), 45-2019-QH14:d154:k1 (0,450), 45-2019-QH14:d154:k2 (0,447)
+- q048 [paraphrase] Đi làm mà ăn cắp đồ của công ty hay chơi bài bạc trong giờ làm thì bị phạt nặng nhất ra sao?
+  Điều đúng: 125; top 3: 45-2019-QH14:d109:k1 (0,509), 45-2019-QH14:d154:k1 (0,458), 45-2019-QH14:d113:k3 (0,468)
+- q052 [paraphrase] Công nhân đứng máy trong xưởng thì bản thân họ phải làm theo những gì để không xảy ra tai nạn?
+  Điều đúng: 134; top 3: 45-2019-QH14:d164:k3 (0,433), 45-2019-QH14:d129:k2 (0,499), 45-2019-QH14:d125:k4 (0,455)
+- q054 [paraphrase] Chị em đi làm sinh em bé đầu lòng thì được nghỉ ở nhà dưỡng sức tổng cộng mấy tháng?
+  Điều đúng: 139; top 3: 45-2019-QH14:d115:k2 (0,518), 45-2019-QH14:d139:k1 (0,655), 45-2019-QH14:d109:k1 (0,459)
+- q056 [paraphrase] Công ty nhận một em 14 tuổi vào làm thêm thì cứ ít nhất bao lâu phải đưa em đi bác sĩ xem em có theo nổi công việc không?
+  Điều đúng: 145; top 3: 45-2019-QH14:d98:k1 (0,435), 45-2019-QH14:d98:k2 (0,389), 45-2019-QH14:d145:k2 (0,544)
+- q058 [paraphrase] Người nước ngoài được cấp giấy tờ cho phép đi làm ở Việt Nam thì giấy đó dùng được dài nhất mấy năm?
+  Điều đúng: 155; top 3: 45-2019-QH14:d154:k6 (0,618), 45-2019-QH14:d157 (0,635), 45-2019-QH14:d156:k4 (0,637)
+- q062 [paraphrase] Cô giúp việc làm vỡ đồ đạc trong nhà tôi thì cô ấy phải chịu trách nhiệm ra sao?
+  Điều đúng: 129, 164; top 3: 45-2019-QH14:d100:k2 (0,461), 45-2019-QH14:d213:k2 (0,390), 45-2019-QH14:d9:k2 (0,452)
+- q064 [paraphrase] Bác đã lớn tuổi vẫn đi làm thì chủ có được giao cho bác những việc vất vả, hại sức khỏe không?
+  Điều đúng: 149; top 3: 45-2019-QH14:d210:k1 (0,452), 45-2019-QH14:d139:k4 (0,456), 45-2019-QH14:d149:k3 (0,666)
+- q068 [paraphrase] Nhóm công nhân tự lập hội để bảo vệ quyền lợi trong công ty thì phải làm gì thì hội đó mới được coi là hợp pháp?
+  Điều đúng: 172; top 3: 45-2019-QH14:d3:k4 (0,554), 45-2019-QH14:d13:k1 (0,504), 45-2019-QH14:d5:k1 (0,533)
+- q070 [paraphrase] Anh đứng đầu hội của anh em công nhân trong công ty mà hợp đồng hết hạn khi chưa hết thời gian được bầu giữ chức, thì công ty phải làm gì?
+  Điều đúng: 177; top 3: 45-2019-QH14:d20:k2 (0,607), 45-2019-QH14:d197:k4 (0,515), 45-2019-QH14:d32:k3 (0,483)
+- q074 [paraphrase] Tôi gửi yêu cầu nhờ người đứng ra dàn xếp bất đồng với công ty thì người đó phải làm xong trong tối đa mấy ngày làm việc?
+  Điều đúng: 188; top 3: 45-2019-QH14:d99:k2 (0,456), 45-2019-QH14:d155 (0,469), 45-2019-QH14:d99:k3 (0,502)
+- q076 [paraphrase] Nhóm người được lập ra để phân xử bất đồng giữa tôi và công ty phải cho kết luận chậm nhất sau bao nhiêu ngày kể từ lúc lập nhóm?
+  Điều đúng: 189, 193, 197; top 3: 45-2019-QH14:d18:k2 (0,473), 45-2019-QH14:d189:k3 (0,618), 45-2019-QH14:d20:k2 (0,471)
+- q078 [paraphrase] Tôi muốn kiện công ty ra tòa vì bị xâm phạm quyền lợi thì được kiện trong vòng bao lâu kể từ lúc biết chuyện?
+  Điều đúng: 190; top 3: 45-2019-QH14:d173:k2 (0,437), 45-2019-QH14:d207:k1 (0,460), 45-2019-QH14:d190:k3 (0,614)
+- q080 [paraphrase] Công nhân nghỉ làm theo cuộc phản đối tập thể thì những ngày đó có được công ty trả tiền không?
+  Điều đúng: 207; top 3: 45-2019-QH14:d41:k1 (0,623), 45-2019-QH14:d79:k2 (0,532), 45-2019-QH14:d98:k1 (0,544)
+- q082 [paraphrase] Nhân viên ở đơn vị nào thì không được phép cùng nhau ngừng việc để đòi quyền lợi?
+  Điều đúng: 209; top 3: 45-2019-QH14:d99:k2 (0,502), 45-2019-QH14:d119:k4 (0,459), 45-2019-QH14:d207:k1 (0,572)
+- q088 [paraphrase] Đoàn kiểm tra bất ngờ đến công ty mà không hẹn trước thì trong tình huống nào là được phép?
+  Điều đúng: 216; top 3: 45-2019-QH14:d3:k9 (0,429), 45-2019-QH14:d154:k5 (0,470), 45-2019-QH14:d212:k5 (0,411)
+- q090 [paraphrase] Luật lao động mới bắt đầu áp dụng ngoài đời từ hồi nào vậy?
+  Điều đúng: 220; top 3: 45-2019-QH14:d202:k4 (0,434), 45-2019-QH14:d202:k3 (0,443), 45-2019-QH14:d70:k1 (0,445)
+- q091 [article_ref] Điều 1 của Bộ luật Lao động quy định về vấn đề gì?
+  Điều đúng: 1; top 3: 45-2019-QH14:d172:k4 (0,592), 45-2019-QH14:d16:k1 (0,582), 45-2019-QH14:d136:k2 (0,543)
+- q094 [article_ref] Nội dung của Điều 140 là gì?
+  Điều đúng: 140; top 3: 45-2019-QH14:d156:k3 (0,400), 45-2019-QH14:d21:k4 (0,389), 45-2019-QH14:d49:k2 (0,375)
+- q095 [article_ref] Điều 198 nói về vấn đề gì?
+  Điều đúng: 198; top 3: 45-2019-QH14:d16:k2 (0,357), 45-2019-QH14:d136:k2 (0,421), 45-2019-QH14:d172:k4 (0,397)
+
+## 4. Điểm top-1
+Trong phạm vi: n=102, thấp nhất 0,478, trung vị 0,704, cao nhất 0,811
+Ngoài phạm vi: n=25, thấp nhất 0,305, trung vị 0,475, cao nhất 0,623
+Câu ngoài phạm vi có điểm cao hơn điểm thấp nhất trong phạm vi: 12/25
+
+## 5. Bảng cặp direct/paraphrase (trúng = Điều đúng trong top 5)
+cả hai trúng: 22
+chỉ direct trúng: 23 (cặp: p02, p03, p05, p06, p07, p08, p10, p14, p15, p16, p20, p21, p23, p24, p26, p29, p34, p35, p37, p40, p41, p44, p45)
+chỉ paraphrase trúng: 0
+cả hai trượt: 0
+
+## 6. Phân bố hạng của Điều đúng (số câu, mức Điều)
+               1   2   3   4   5   6   7   8   9  10  trượt
+direct        42   1   2   0   0   0   0   0   0   0      0
+paraphrase    13   3   3   2   1   0   1   3   1   1     17
+
+## 7. So với run tham chiếu
+A (tham chiếu): eval\runs\2026-11-27-r1-dense.jsonl; mode dense
+B (run này): mode sparse, promotion tắt
+
+### 7.1 R@1 theo nhóm (mức Điều)
+direct: A 44/45, B 42/45
+paraphrase: A 32/45, B 13/45
+article_ref: A 9/12, B 9/12
+  q091: hạng Điều A 1, B 5; hạng Khoản A 1, B 5
+  q092: hạng Điều A 1, B 1; hạng Khoản A 1, B 1
+  q093: hạng Điều A 5, B 1; hạng Khoản A 5, B 1
+  q094: hạng Điều A 10, B 8; hạng Khoản A 10, B 8
+  q095: hạng Điều A ngoài top 10, B 9; hạng Khoản A ngoài top 10, B 9
+  q096: hạng Điều A 1, B 1; hạng Khoản A 1, B 1
+  q097: hạng Điều A 1, B 1; hạng Khoản A 1, B 1
+  q098: hạng Điều A 1, B 1; hạng Khoản A 1, B 1
+  q099: hạng Điều A 1, B 1; hạng Khoản A 1, B 1
+  q100: hạng Điều A 1, B 1; hạng Khoản A 1, B 1
+  q101: hạng Điều A 1, B 1; hạng Khoản A 1, B 1
+  q102: hạng Điều A 1, B 1; hạng Khoản A 1, B 2
+
+### 7.2 McNemar trên câu paraphrase (mức Điều, hạng 1)
+n = 45; b = 2 (B đúng hạng 1, A sai); c = 21 (A đúng hạng 1, B sai)
+p chính xác = 0,000066; mid-p = 0,000036
+C1 (mid-p ≤ 0,05 và b > c): không
+b − c ≥ 3 và c ≤ 1: không
+
+### 7.3 Guard cho câu direct (mức Điều)
+|D| = 44 (câu direct có Điều đúng ở hạng 1 trong A)
+Mất hạng 1 ở B: 2/44: q007 (1 → 3), q013 (1 → 2)
+Cận trên Clopper–Pearson hai phía 95 % của tỷ lệ mất: 0,1547
+Rời top 5 (direct, A trong top 5, B ngoài): 0: (không có)
+Guard đạt (mất tối đa 1 và không câu nào rời top 5): không
+
+### 7.4 Câu tụt hạng (mức Điều, ngoài top 10 tính là 11)
+Số câu tụt hạng: 36
+- q001 [direct] 2 → 3
+- q004 [paraphrase] 2 → ngoài top 10
+- q006 [paraphrase] 4 → ngoài top 10
+- q007 [direct] 1 → 3
+- q010 [paraphrase] 1 → ngoài top 10
+- q012 [paraphrase] 1 → 8
+- q013 [direct] 1 → 2
+- q014 [paraphrase] 1 → 7
+- q016 [paraphrase] 2 → ngoài top 10
+- q020 [paraphrase] 2 → 8
+- q022 [paraphrase] 1 → 4
+- q026 [paraphrase] 1 → 4
+- q028 [paraphrase] 2 → ngoài top 10
+- q030 [paraphrase] 2 → ngoài top 10
+- q032 [paraphrase] 1 → ngoài top 10
+- q034 [paraphrase] 1 → 2
+- q040 [paraphrase] 3 → ngoài top 10
+- q042 [paraphrase] 1 → 8
+- q046 [paraphrase] 3 → ngoài top 10
+- q048 [paraphrase] 3 → ngoài top 10
+- q052 [paraphrase] 1 → ngoài top 10
+- q054 [paraphrase] 1 → 2
+- q056 [paraphrase] 1 → 3
+- q058 [paraphrase] 1 → 9
+- q062 [paraphrase] 1 → 5
+- q064 [paraphrase] 1 → 3
+- q068 [paraphrase] 1 → ngoài top 10
+- q070 [paraphrase] 1 → ngoài top 10
+- q074 [paraphrase] 2 → ngoài top 10
+- q076 [paraphrase] 1 → 2
+- q078 [paraphrase] 1 → 3
+- q080 [paraphrase] 1 → ngoài top 10
+- q082 [paraphrase] 3 → ngoài top 10
+- q088 [paraphrase] 1 → 10
+- q090 [paraphrase] 1 → ngoài top 10
+- q091 [article_ref] 1 → 5
+
+### 7.5 Dung sai tái lập
+Bỏ qua kiểm tra dung sai: A là dense, B là sparse (chỉ kiểm khi hai run cùng mode dense hoặc cùng hybrid).
+
+| 2026-11-27 | T6 (2): sparse BM25 | 0,611 | 0,744 | 0,811 | 0,668 | Mức Khoản: 0,556 / 0,711 / 0,778 / 0,625; R@1 theo nhóm (mức Điều): direct 42/45, paraphrase 13/45; bộ câu 577b8392afeb; n=90 (+12 article_ref, 25 ngoài phạm vi) |
