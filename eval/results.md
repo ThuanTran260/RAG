@@ -31,6 +31,8 @@ Baseline dense đo ngày 22/11/2026 trên bộ câu `577b8392afeb` (127 câu, xe
 | 2026-11-27 | T6 (4): dense + promotion số Điều | 0,844 | 1,000 | 1,000 | 0,907 | Mức Khoản: 0,778 / 0,989 / 1,000 / 0,864; R@1 theo nhóm (mức Điều): direct 44/45, paraphrase 32/45; bộ câu 577b8392afeb; n=90 (+12 article_ref, 25 ngoài phạm vi); article_ref R@1 12/12; xem mục Tuần 4 |
 | 2026-11-27 | T6 (5): hybrid + promotion số Điều | 0,744 | 0,922 | 0,944 | 0,815 | Mức Khoản: 0,700 / 0,889 / 0,911 / 0,773; R@1 theo nhóm (mức Điều): direct 44/45, paraphrase 23/45; bộ câu 577b8392afeb; n=90 (+12 article_ref, 25 ngoài phạm vi); article_ref R@1 12/12; xem mục Tuần 4 |
 | 2026-11-27 | T7: search/ask dùng dense + promotion số Điều (mặc định mới) | 0,844 | 1,000 | 1,000 | 0,907 | Mức Khoản: 0,778 / 0,989 / 1,000 / 0,864; R@1 theo nhóm (mức Điều): direct 44/45, paraphrase 32/45; bộ câu 577b8392afeb; n=90 (+12 article_ref, 25 ngoài phạm vi); article_ref R@1 12/12; so với run (4) của T6: dung sai (a)–(d) đạt, 0 đổi chỗ |
+| 2026-11-27 | X1 (thăm dò): câu đời thường bỏ dấu, dense | 0,511 | 0,567 | 0,578 | 0,534 | Mức Khoản: 0,467 / 0,544 / 0,567 / 0,503; R@1 theo nhóm (mức Điều): direct 44/45, paraphrase 2/45; bộ câu b5d865d07252; n=90 (+12 article_ref, 25 ngoài phạm vi); thăm dò X1, không dùng để tuyên bố: chỉ 45 câu paraphrase bỏ dấu, các câu khác giữ nguyên; xem mục X1 |
+| 2026-11-27 | X1 (thăm dò): câu đời thường bỏ dấu, hybrid RRF | 0,511 | 0,567 | 0,611 | 0,534 | Mức Khoản: 0,489 / 0,567 / 0,589 / 0,520; R@1 theo nhóm (mức Điều): direct 44/45, paraphrase 2/45; bộ câu b5d865d07252; n=90 (+12 article_ref, 25 ngoài phạm vi); thăm dò X1, không dùng để tuyên bố: chỉ 45 câu paraphrase bỏ dấu, các câu khác giữ nguyên; xem mục X1 |
 
 ## Tuần 4: hybrid và promotion số Điều (pre-registration)
 
@@ -139,3 +141,36 @@ Thăm dò, không dùng để quyết định — run (2) sparse so với run (1
 ### 6. Tiếp theo
 
 - T7 đã xong trong commit `feat: ship dense retrieval with article promotion as the default (T7)`: mặc định là dense trên collection chỉ có dense, bật promotion số Điều.
+
+## X1: câu đời thường bỏ dấu (thăm dò, không dùng để tuyên bố)
+
+**Cách làm:**
+
+- Bỏ dấu 45 câu paraphrase bằng hàm:
+
+```python
+def strip_marks(text: str) -> str:
+    decomposed = unicodedata.normalize("NFD", text)
+    kept = "".join(ch for ch in decomposed if not unicodedata.combining(ch))
+    return unicodedata.normalize("NFC", kept.replace("đ", "d").replace("Đ", "D"))
+```
+
+- File câu hỏi: `eval/runs/2026-11-27-x1-questions.jsonl`, bộ câu `b5d865d07252`.
+- Cờ của hai run: dense `--collection hybrid`; hybrid `--retriever hybrid`.
+- So với run (1) và run (3) của T6, cùng collection, không promotion.
+
+**Số liệu, 45 câu paraphrase, mức Điều (có dấu → bỏ dấu):**
+
+- dense: R@1 32/45 → 2/45; R@5 1,000 → 0,133; R@10 1,000 → 0,156; MRR@10 0,826 → 0,079.
+- hybrid: R@1 23/45 → 2/45; R@5 0,844 → 0,133; R@10 0,889 → 0,222; MRR@10 0,645 → 0,083.
+- dense, số câu đúng ở hạng 1: chỉ khi có dấu 30; chỉ khi bỏ dấu 0; cả hai 2.
+- hybrid, số câu đúng ở hạng 1: chỉ khi có dấu 21; chỉ khi bỏ dấu 0; cả hai 2.
+
+**Kiểm tra tất định:**
+
+- dense: 82 câu còn lại: 82/82 dòng trùng run T6.
+- hybrid: 82 câu còn lại: 82/82 dòng trùng run T6.
+
+**Kiểm tra file câu hỏi:**
+
+- 127 dòng, id, nhóm, gold id và gold article trùng `eval/questions.jsonl`; đúng 45 trường `question` khác, đều thuộc paraphrase; 0 câu bỏ dấu còn ký tự trên U+007F; 0 cặp câu paraphrase bỏ dấu trùng nhau.

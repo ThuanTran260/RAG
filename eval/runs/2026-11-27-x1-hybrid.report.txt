@@ -1,0 +1,124 @@
+## 1. Tổng quan
+Collection: labor_law_vn__baai-bge-m3--d790e737453c__hybrid-v1
+Chế độ truy xuất: hybrid
+Promotion số Điều: tắt
+Model: BAAI/bge-m3
+Bộ câu: b5d865d07252
+Số câu: direct 45, paraphrase 45, article_ref 12, out_of_scope 25
+
+## 2. Bảng kết quả (hạng tính trên top 10)
+               n   Điều: R@1     R@5    R@10  MRR@10   Khoản: R@1     R@5    R@10  MRR@10
+số chính      90       0,511   0,567   0,611   0,534        0,489   0,567   0,589   0,520
+direct        45       0,978   1,000   1,000   0,985        0,933   1,000   1,000   0,963
+paraphrase    45       0,044   0,133   0,222   0,083        0,044   0,133   0,178   0,077
+article_ref   12       0,917   1,000   1,000   0,958        0,917   1,000   1,000   0,958
+
+## 3. Câu trượt ở hạng 1 (mức Điều)
+- q001 [direct] Người lao động đơn phương chấm dứt hợp đồng lao động thì phải báo trước cho người sử dụng lao động trong thời hạn bao lâu?
+  Điều đúng: 35; top 3: 45-2019-QH14:d36:k2 (0,809), 45-2019-QH14:d36:k3 (0,737), 45-2019-QH14:d35:k1 (0,759)
+- q002 [paraphrase] Nguoi lao dong muon nghi viec phai bao truoc bao nhieu ngay?
+  Điều đúng: 35; top 3: 45-2019-QH14:d219:k1 (0,365), 45-2019-QH14:d217:k2 (0,339), 45-2019-QH14:d29:k1 (0,370)
+- q004 [paraphrase] Chu bat minh di lam du minh khong chiu, lai con hu doa, thi luat goi do la gi?
+  Điều đúng: 3; top 3: 45-2019-QH14:d190:k4 (0,352), 45-2019-QH14:d29:k1 (0,361), 45-2019-QH14:d209:k1 (0,352)
+- q006 [paraphrase] Di xin viec ma ben nhan ho so doi minh tra tien cong gioi thieu, tien xet ho so thi co dung luat khong?
+  Điều đúng: 11; top 3: 45-2019-QH14:d180:k3 (0,367), 45-2019-QH14:d156:k3 (0,382), 45-2019-QH14:d29:k1 (0,349)
+- q008 [paraphrase] Ky hop dong co ghi ngay het han thi duoc ky dai nhat la may nam?
+  Điều đúng: 20; top 3: 45-2019-QH14:d24:k1 (0,308), 45-2019-QH14:d18:k2 (0,318), 45-2019-QH14:d154:k4 (0,291)
+- q010 [paraphrase] Vi tri cong ty dang tuyen doi hoi phai co bang dai hoc, vay giai doan lam thu truoc khi ky chinh thuc duoc keo dai toi da bao nhieu ngay?
+  Điều đúng: 25; top 3: 45-2019-QH14:d217:k2 (0,372), 45-2019-QH14:d208:k6 (0,372), 45-2019-QH14:d76:k2 (0,375)
+- q012 [paraphrase] Sep tam day minh sang lam viec khong giong nhu da ky, thi mot nam duoc day toi da bao nhieu ngay ma khong can minh ky giay chap thuan?
+  Điều đúng: 29; top 3: 45-2019-QH14:d154:k5 (0,385), 45-2019-QH14:d154:k4 (0,384), 45-2019-QH14:d29:k1 (0,378)
+- q014 [paraphrase] Hop dong cua toi chua ghi ngay ket thuc, cong ty muon cho toi nghi viec thi phai cho toi hay som it nhat may ngay?
+  Điều đúng: 36; top 3: 45-2019-QH14:d24:k1 (0,412), 45-2019-QH14:d201:k2 (0,402), 45-2019-QH14:d219:k2 (0,412)
+- q016 [paraphrase] Toi nghi viec dot ngot khong dung luat thi phai den cho cong ty so tien luong bao nhieu?
+  Điều đúng: 40; top 3: 45-2019-QH14:d154:k2 (0,399), 45-2019-QH14:d154:k1 (0,397), 45-2019-QH14:d156:k3 (0,407)
+- q018 [paraphrase] Cong ty cho toi thoi viec sai luat, neu toi quay lai lam thi ngoai luong nhung ngay nghi oan cong ty con phai tra them it nhat may thang luong nua?
+  Điều đúng: 41; top 3: 45-2019-QH14:d217:k2 (0,424), 45-2019-QH14:d54:k2 (0,454), 45-2019-QH14:d57:k6 (0,463)
+- q020 [paraphrase] Toi lam cho cong ty hon mot nam thi het hop dong va nghi, cong ty phai chi cho toi mot khoan tien, moi nam cong tac tinh bang bao nhieu luong?
+  Điều đúng: 46; top 3: 45-2019-QH14:d150:k2 (0,396), 45-2019-QH14:d150:k1 (0,394), 45-2019-QH14:d150:k3 (0,382)
+- q022 [paraphrase] Cong ty doi co cau hoac cong nghe khien toi khong con cho lam, toi da lam hon 12 thang thi moi nam cong tac cong ty phai tra toi bao nhieu thang luong?
+  Điều đúng: 47; top 3: 45-2019-QH14:d93:k1 (0,427), 45-2019-QH14:d34:k12 (0,427), 45-2019-QH14:d93:k3 (0,421)
+- q024 [paraphrase] Cong ty nhan minh vao hoc viec roi giu lai lam luon thi co duoc bat minh dong tien hoc khong?
+  Điều đúng: 61; top 3: 45-2019-QH14:d7:k4 (0,349), 45-2019-QH14:d154:k2 (0,330), 45-2019-QH14:d219:k2 (0,361)
+- q026 [paraphrase] Cong ty phai ngoi lai trao doi y kien voi nhan vien it nhat may lan mot nam?
+  Điều đúng: 63; top 3: 45-2019-QH14:d154:k2 (0,343), 45-2019-QH14:d154:k4 (0,357), 45-2019-QH14:d150:k1 (0,356)
+- q028 [paraphrase] Cong ty va dai dien nguoi lao dong ngoi ban thoa thuan ve quyen loi chung thi duoc keo dai toi da bao nhieu ngay?
+  Điều đúng: 70; top 3: 45-2019-QH14:d219:k2 (0,427), 45-2019-QH14:d220:k2 (0,379), 45-2019-QH14:d76:k2 (0,381)
+- q030 [paraphrase] Cong ty va dai dien nhan vien thong nhat dieu khoan chung ma kem hon luat nha nuoc thi co duoc khong?
+  Điều đúng: 75; top 3: 45-2019-QH14:d7:k3 (0,326), 45-2019-QH14:d4:k3 (0,332), 45-2019-QH14:d154:k2 (0,320)
+- q032 [paraphrase] Ban thoa thuan chung giua cong ty va dai dien nhan vien thi co gia tri duoc may nam?
+  Điều đúng: 78; top 3: 45-2019-QH14:d154:k2 (0,357), 45-2019-QH14:d157 (0,352), 45-2019-QH14:d154:k5 (0,348)
+- q034 [paraphrase] Ban thoa thuan chung giua cong ty va dai dien nhan vien sap het gia tri, hai ben duoc ban chuyen gia han hay ky ban moi trong khoang bao nhieu ngay truoc do?
+  Điều đúng: 83; top 3: 45-2019-QH14:d173:k2 (0,375), 45-2019-QH14:d179:k2 (0,353), 45-2019-QH14:d175:k1 (0,358)
+- q036 [paraphrase] Toi an luong cung hang thang thi cong ty phai phat luong cho toi may lan mot thang?
+  Điều đúng: 97; top 3: 45-2019-QH14:d93:k1 (0,419), 45-2019-QH14:d93:k3 (0,428), 45-2019-QH14:d93:k2 (0,409)
+- q038 [paraphrase] Tang ca vao ngay di lam binh thuong trong tuan thi duoc tra cong cao hon gio thuong it nhat bao nhieu phan tram?
+  Điều đúng: 98; top 3: 45-2019-QH14:d216 (0,284), 45-2019-QH14:d217:k2 (0,278), 45-2019-QH14:d110 (0,271)
+- q040 [paraphrase] Toi lam hong may cua cong ty, moi thang cong ty duoc giu lai toi da bao nhieu phan tram so tien toi duoc nhan de den?
+  Điều đúng: 102; top 3: 45-2019-QH14:d93:k2 (0,348), 45-2019-QH14:d30:k1 (0,338), 45-2019-QH14:d29:k1 (0,339)
+- q042 [paraphrase] Dip Nguyen dan, nguoi di lam o cong ty duoc nghi may ngay ma van nhan du tien?
+  Điều đúng: 112; top 3: 45-2019-QH14:d154:k2 (0,354), 45-2019-QH14:d154:k1 (0,348), 45-2019-QH14:d107:k3 (0,320)
+- q044 [paraphrase] Lam du mot nam o cong ty thi duoc nghi phep nam may ngay, neu cong viec binh thuong?
+  Điều đúng: 113; top 3: 45-2019-QH14:d220:k3 (0,366), 45-2019-QH14:d154:k5 (0,364), 45-2019-QH14:d156:k7 (0,365)
+- q046 [paraphrase] Nhan vien lam sai, cong ty cham nhat bao lau sau do thi khong con duoc phat nua?
+  Điều đúng: 123; top 3: 45-2019-QH14:d115:k1 (0,340), 45-2019-QH14:d154:k2 (0,351), 45-2019-QH14:d154:k1 (0,347)
+- q048 [paraphrase] Di lam ma an cap do cua cong ty hay choi bai bac trong gio lam thi bi phat nang nhat ra sao?
+  Điều đúng: 125; top 3: 45-2019-QH14:d219:k2 (0,412), 45-2019-QH14:d220:k3 (0,404), 45-2019-QH14:d42:k2 (0,433)
+- q050 [paraphrase] Nhan vien lo tay lam hong do cua cong ty, mon do hong khong dang bao nhieu tien, thi phai den nhieu nhat la bao nhieu thang luong?
+  Điều đúng: 129; top 3: 45-2019-QH14:d93:k2 (0,342), 45-2019-QH14:d154:k1 (0,342), 45-2019-QH14:d154:k2 (0,344)
+- q052 [paraphrase] Cong nhan dung may trong xuong thi ban than ho phai lam theo nhung gi de khong xay ra tai nan?
+  Điều đúng: 134; top 3: 45-2019-QH14:d219:k2 (0,375), 45-2019-QH14:d214:k2 (0,346), 45-2019-QH14:d189:k4 (0,351)
+- q054 [paraphrase] Chi em di lam sinh em be dau long thi duoc nghi o nha duong suc tong cong may thang?
+  Điều đúng: 139; top 3: 45-2019-QH14:d93:k1 (0,295), 45-2019-QH14:d93:k3 (0,290), 45-2019-QH14:d93:k2 (0,291)
+- q056 [paraphrase] Cong ty nhan mot em 14 tuoi vao lam them thi cu it nhat bao lau phai dua em di bac si xem em co theo noi cong viec khong?
+  Điều đúng: 145; top 3: 45-2019-QH14:d61:k4 (0,456), 45-2019-QH14:d59:k2 (0,345), 45-2019-QH14:d154:k2 (0,317)
+- q058 [paraphrase] Nguoi nuoc ngoai duoc cap giay to cho phep di lam o Viet Nam thi giay do dung duoc dai nhat may nam?
+  Điều đúng: 155; top 3: 45-2019-QH14:d156:k3 (0,395), 45-2019-QH14:d154:k4 (0,411), 45-2019-QH14:d156:k4 (0,388)
+- q062 [paraphrase] Co giup viec lam vo do dac trong nha toi thi co ay phai chiu trach nhiem ra sao?
+  Điều đúng: 129, 164; top 3: 45-2019-QH14:d9:k1 (0,418), 45-2019-QH14:d219:k2 (0,409), 45-2019-QH14:d29:k1 (0,416)
+- q064 [paraphrase] Bac da lon tuoi van di lam thi chu co duoc giao cho bac nhung viec vat va, hai suc khoe khong?
+  Điều đúng: 149; top 3: 45-2019-QH14:d97:k2 (0,434), 45-2019-QH14:d25:k2 (0,460), 45-2019-QH14:d25:k4 (0,437)
+- q068 [paraphrase] Nhom cong nhan tu lap hoi de bao ve quyen loi trong cong ty thi phai lam gi thi hoi do moi duoc coi la hop phap?
+  Điều đúng: 172; top 3: 45-2019-QH14:d219:k2 (0,463), 45-2019-QH14:d30:k1 (0,420), 45-2019-QH14:d79:k3 (0,430)
+- q070 [paraphrase] Anh dung dau hoi cua anh em cong nhan trong cong ty ma hop dong het han khi chua het thoi gian duoc bau giu chuc, thi cong ty phai lam gi?
+  Điều đúng: 177; top 3: 45-2019-QH14:d115:k2 (0,361), 45-2019-QH14:d27:k1 (0,367), 45-2019-QH14:d32:k2 (0,362)
+- q072 [paraphrase] Hai ben dang nho nguoi co tham quyen phan xu mau thuan trong cong ty thi mot ben co duoc tu y lam gi de gay ap luc len ben kia khong?
+  Điều đúng: 186; top 3: 45-2019-QH14:d7:k3 (0,401), 45-2019-QH14:d219:k2 (0,387), 45-2019-QH14:d186 (0,380)
+- q074 [paraphrase] Toi gui yeu cau nho nguoi dung ra dan xep bat dong voi cong ty thi nguoi do phai lam xong trong toi da may ngay lam viec?
+  Điều đúng: 188; top 3: 45-2019-QH14:d219:k2 (0,441), 45-2019-QH14:d154:k2 (0,433), 45-2019-QH14:d107:k3 (0,413)
+- q076 [paraphrase] Nhom nguoi duoc lap ra de phan xu bat dong giua toi va cong ty phai cho ket luan cham nhat sau bao nhieu ngay ke tu luc lap nhom?
+  Điều đúng: 189, 193, 197; top 3: 45-2019-QH14:d154:k2 (0,375), 45-2019-QH14:d217:k2 (0,366), 45-2019-QH14:d154:k1 (0,362)
+- q078 [paraphrase] Toi muon kien cong ty ra toa vi bi xam pham quyen loi thi duoc kien trong vong bao lau ke tu luc biet chuyen?
+  Điều đúng: 190; top 3: 45-2019-QH14:d219:k2 (0,408), 45-2019-QH14:d154:k2 (0,409), 45-2019-QH14:d190:k3 (0,397)
+- q080 [paraphrase] Cong nhan nghi lam theo cuoc phan doi tap the thi nhung ngay do co duoc cong ty tra tien khong?
+  Điều đúng: 207; top 3: 45-2019-QH14:d217:k2 (0,325), 45-2019-QH14:d217:k3 (0,334), 45-2019-QH14:d154:k2 (0,318)
+- q082 [paraphrase] Nhan vien o don vi nao thi khong duoc phep cung nhau ngung viec de doi quyen loi?
+  Điều đúng: 209; top 3: 45-2019-QH14:d220:k3 (0,349), 45-2019-QH14:d219:k2 (0,345), 45-2019-QH14:d16:k2 (0,326)
+- q084 [paraphrase] Cuoc ngung viec tap the co nguy co lam kinh te bi thiet hai nang thi ai la nguoi co quyen ra lenh cham dut hoac lui ngay?
+  Điều đúng: 210; top 3: 45-2019-QH14:d219:k2 (0,363), 45-2019-QH14:d164:k3 (0,352), 45-2019-QH14:d108:k2 (0,337)
+- q086 [paraphrase] O nuoc minh, ai dung dau, nam quyen quan ly chung moi chuyen lien quan den nguoi di lam thue tren toan quoc?
+  Điều đúng: 213; top 3: 45-2019-QH14:d7:k4 (0,342), 45-2019-QH14:d3:k5 (0,344), 45-2019-QH14:d7:k2 (0,340)
+- q088 [paraphrase] Doan kiem tra bat ngo den cong ty ma khong hen truoc thi trong tinh huong nao la duoc phep?
+  Điều đúng: 216; top 3: 45-2019-QH14:d217:k3 (0,359), 45-2019-QH14:d217:k2 (0,350), 45-2019-QH14:d154:k2 (0,339)
+- q090 [paraphrase] Luat lao dong moi bat dau ap dung ngoai doi tu hoi nao vay?
+  Điều đúng: 220; top 3: 45-2019-QH14:d156:k3 (0,379), 45-2019-QH14:d29:k1 (0,399), 45-2019-QH14:d55:k2 (0,377)
+- q095 [article_ref] Điều 198 nói về vấn đề gì?
+  Điều đúng: 198; top 3: 45-2019-QH14:d201:k1 (0,472), 45-2019-QH14:d198 (0,456), 45-2019-QH14:d178:k3 (0,437)
+
+## 4. Điểm top-1
+Trong phạm vi: n=102, thấp nhất 0,319, trung vị 0,659, cao nhất 0,811
+Ngoài phạm vi: n=25, thấp nhất 0,305, trung vị 0,475, cao nhất 0,623
+Câu ngoài phạm vi có điểm cao hơn điểm thấp nhất trong phạm vi: 24/25
+
+## 5. Bảng cặp direct/paraphrase (trúng = Điều đúng trong top 5)
+cả hai trúng: 6
+chỉ direct trúng: 39 (cặp: p01, p02, p03, p04, p05, p07, p08, p09, p10, p11, p12, p13, p14, p15, p16, p17, p18, p19, p20, p21, p22, p23, p24, p25, p26, p27, p28, p29, p31, p32, p34, p35, p37, p38, p40, p41, p42, p43, p45)
+chỉ paraphrase trúng: 0
+cả hai trượt: 0
+
+## 6. Phân bố hạng của Điều đúng (số câu, mức Điều)
+               1   2   3   4   5   6   7   8   9  10  trượt
+direct        44   0   1   0   0   0   0   0   0   0      0
+paraphrase     2   0   3   1   0   1   0   0   3   0     35
+
+| 2026-11-27 | X1 (thăm dò): câu đời thường bỏ dấu, hybrid RRF | 0,511 | 0,567 | 0,611 | 0,534 | Mức Khoản: 0,489 / 0,567 / 0,589 / 0,520; R@1 theo nhóm (mức Điều): direct 44/45, paraphrase 2/45; bộ câu b5d865d07252; n=90 (+12 article_ref, 25 ngoài phạm vi) |
