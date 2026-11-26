@@ -1418,7 +1418,20 @@ def test_comparison_without_regressions_says_so(tmp_path):
 
 # --- reproduction tolerance (§5.7) -------------------------------------------------
 
-SHORTS = [f"d{article}:k1" for article in (35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45)]
+# Real chunk ids from chunks.jsonl: articles 38 and 39 are single chunks without clauses.
+SHORTS = [
+    "d35:k1",
+    "d36:k1",
+    "d37:k1",
+    "d38",
+    "d39",
+    "d40:k1",
+    "d41:k1",
+    "d42:k1",
+    "d43:k1",
+    "d44:k1",
+    "d45:k1",
+]
 
 
 def top_ten():
@@ -1482,7 +1495,7 @@ def test_tolerance_b_accepts_a_swap_of_near_ties(tmp_path):
 
     assert (check.identical, check.swapped, check.violated, check.violations) == (0, 1, 0, [])
     assert check.swaps == [
-        f"q001: đổi chỗ {full_id('d38:k1')} <-> {full_id('d39:k1')} (gap A 5.00e-05, B 5.00e-05)"
+        f"q001: đổi chỗ {full_id('d38')} <-> {full_id('d39')} (gap A 5.00e-05, B 5.00e-05)"
     ]
     assert check.score_violations == []
 

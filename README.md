@@ -122,7 +122,7 @@ Lệnh cần Qdrant đang chạy và model embedding trong cache cục bộ. M�
 - **Chạm trần ở top 5.** Cả 90 câu có Điều đúng trong top 5, nên recall@5 không còn chỗ để Tuần 4–5 chứng minh cải thiện. Chênh lệch nằm ở hạng: Điều đúng đứng hạng 1 ở 44/45 câu trực tiếp nhưng chỉ 32/45 câu đời thường (hạng 2: 6, hạng 3: 5, hạng 4: 2; tính từ `eval/runs/2026-11-22-dense-baseline.jsonl`). `run_eval` in sẵn R@1 ở cả hai mức (mục 2 của báo cáo) và phân bố hạng mức Điều cho direct và paraphrase (mục 6), nên không cần tính tay.
 - **Bảng cặp (mức Điều, top 5):** cả hai trúng 45, chỉ câu trực tiếp trúng 0, chỉ câu đời thường trúng 0, cả hai trượt 0.
 - **Ca Điều 35/36 vẫn còn:** q001 xếp `d36:k2` trên `d35:k1` (hạng 2), q002 ("Người lao động muốn nghỉ việc phải báo trước bao nhiêu ngày?") để Điều 35 ở hạng 3.
-- **Câu nêu số Điều:** 2/12 trượt top 5 (q094 "Nội dung của Điều 140 là gì?", q095 "Điều 198 nói về vấn đề gì?"), vì vector không mang số Điều. Đây là việc của lọc metadata ở Tuần 4.
+- **Câu nêu số Điều:** 2/12 trượt top 5 (q094 "Nội dung của Điều 140 là gì?", q095 "Điều 198 nói về vấn đề gì?"), vì vector không mang số Điều. Tuần 4 xử lý ca này bằng promotion số Điều (R@1 nhóm article_ref 9/12 → 12/12, xem mục Tuần 4 bên dưới).
 - **Điểm top-1:** trong phạm vi (102 câu) thấp nhất 0,478, trung vị 0,704, cao nhất 0,811; ngoài phạm vi (25 câu) thấp nhất 0,305, trung vị 0,475, cao nhất 0,623. 12/25 câu ngoài phạm vi có điểm cao hơn câu trong phạm vi thấp nhất, nên một ngưỡng điểm đơn lẻ không tách được hai nhóm.
 
 ### Tuần 4: hybrid và promotion số Điều (27/11/2026, bộ câu 577b8392afeb)

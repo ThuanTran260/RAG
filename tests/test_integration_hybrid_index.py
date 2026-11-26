@@ -274,7 +274,7 @@ def test_dense_retrieval_reproduces_the_baseline_run(client, settings, embedder,
         swaps += [f"{question.id}: {line}" for line in tolerated]
         failures += [f"{question.id}: swap {line}" for line in violations]
 
-    device = embedder._model.device  # no public accessor on the embedder
+    device = embedder._model.device  # a torch.device; embedder.device gives only its name
     with capsys.disabled():
         print(f"\ndevice: {device}")
         if device.type == "cuda":
