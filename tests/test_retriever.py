@@ -1,3 +1,5 @@
+import subprocess
+import sys
 import unicodedata
 from types import SimpleNamespace
 
@@ -6,6 +8,9 @@ from qdrant_client import QdrantClient
 from qdrant_client.http.exceptions import ResponseHandlingException, UnexpectedResponse
 from qdrant_client.models import (
     Distance,
+    FieldCondition,
+    Filter,
+    MatchAny,
     Modifier,
     SearchParams,
     SparseVector,
@@ -482,13 +487,17 @@ class ScriptedClient:
     def query_points(self, collection, **arguments):
         self.calls.append(("query_points", {"collection": collection, **arguments}))
         is_sparse = isinstance(arguments["query"], SparseVector)
+        hits = self.sparse if is_sparse else self.dense
+        if "query_filter" in arguments:  # a MatchAny on the article, the only filter in use
+            wanted = arguments["query_filter"].must[0].match.any
+            hits = [hit for hit in hits if self.payloads[hit[0]]["article"] in wanted]
         points = [
             SimpleNamespace(
                 id=point_id(chunk_id),
                 score=score,
                 payload=self.payloads[chunk_id] if arguments["with_payload"] else None,
             )
-            for chunk_id, score in (self.sparse if is_sparse else self.dense)
+            for chunk_id, score in hits
         ]
         return SimpleNamespace(points=points[: arguments["limit"]])
 
@@ -868,3 +877,298 @@ def test_bm25_modes_work_on_a_real_hybrid_build(hybrid_build, question, article)
     assert [(r.chunk.id, r.fusion_score, r.dense_rank, r.sparse_rank) for r in hybrid] == [
         (item.key, item.score, item.dense_rank, item.sparse_rank) for item in expected
     ]
+
+
+# --- article promotion ------------------------------------------------------------
+
+# As above, no question of the evaluation set has one of these articles (or 24 and 32) as gold.
+PROMOTION_ARTICLES = (*OUTSIDE_ARTICLES, 154)
+NAMED_205 = "Điều 205 buộc phải báo cho cơ quan nào khi đóng cửa nơi làm việc?"
+NAMED_92_AND_205 = "So sánh giúp tôi Điều 92 với Điều 205."
+NAMED_77 = "Điều 77 yêu cầu gửi bản thỏa ước trong mấy ngày?"
+NAMED_ABSENT = "Điều 24 có mấy khoản?"  # no chunk of Điều 24 is in these test collections
+NAMED_ELSEWHERE = "Điều 32 của Bộ luật Tố tụng dân sự nói gì?"
+PROMOTION_QUESTIONS = (NAMED_205, NAMED_92_AND_205, NAMED_77, NAMED_ABSENT, NAMED_ELSEWHERE)
+UNNAMED_QUESTIONS = (COUNCIL_QUESTION, NAMED_ELSEWHERE, "Cho mình hỏi điều 1 chút")
+PROMOTING_MODES = ("dense", "hybrid")
+
+D92_K2 = "45-2019-QH14:d92:k2"
+# The ten clauses of Điều 154.
+A = [f"45-2019-QH14:d154:k{clause}" for clause in (1, 2, 3, 4, 5, 6, 7, 8, "8a", 9)]
+# Best first. Khoản 2 of Điều 205 is second; its other two clauses are far below the top 10.
+ORDER = [A[0], D205_K2, *A[1:], D92_K1, D205_K1, D100_K1, D92_K2, D205_K3, D77]
+RANKED = [(chunk_id, round(0.9 - 0.01 * place, 2)) for place, chunk_id in enumerate(ORDER)]
+# What NAMED_205 gives for each k: m = 0, 0, 1, 3, 3, 3 promoted, then the original top k.
+PROMOTED_205 = {
+    1: [A[0]],
+    2: [A[0], D205_K2],
+    3: [D205_K2, A[0], A[1]],
+    5: [D205_K2, D205_K1, D205_K3, A[0], A[1]],
+    8: [D205_K2, D205_K1, D205_K3, *A[:5]],
+    10: [D205_K2, D205_K1, D205_K3, *A[:7]],
+}
+
+
+@pytest.fixture
+def promotion_chunks(all_chunks):
+    return [chunk for chunk in all_chunks if chunk.article in PROMOTION_ARTICLES]
+
+
+@pytest.fixture
+def promoting(promotion_chunks, fake_embedder):
+    """Like ``scripted``, over a longer ranking and with promotion on unless told otherwise."""
+
+    def _build(mode, promote=True, dense=RANKED, sparse=()):
+        client = ScriptedClient(promotion_chunks, dense=dense, sparse=sparse)
+        retriever = Retriever(client, fake_embedder, "scripted", mode=mode, promote=promote)
+        return retriever, client
+
+    return _build
+
+
+def ids(results):
+    return [result.chunk.id for result in results]
+
+
+def test_the_promotion_questions_stay_outside_the_evaluation_set():
+    questions = load_questions(REPO_ROOT / "eval" / "questions.jsonl")
+    asked = {question.question.casefold() for question in questions}
+
+    assert not asked & {text.casefold() for text in PROMOTION_QUESTIONS + UNNAMED_QUESTIONS}
+    gold = {article for question in questions for article in question.gold_articles}
+    assert not gold & {*PROMOTION_ARTICLES, 24, 32}
+
+
+def test_promotion_is_off_unless_asked_for(promoting, client, fake_embedder, wired):
+    assert Retriever(client, fake_embedder, "any").promote is False
+    assert default_retriever().promote is False
+
+    retriever, scripted_client = promoting("dense", promote=False)
+
+    assert ids(retriever.retrieve(NAMED_205, k=5)) == ORDER[:5]
+    assert len(scripted_client.queries()) == 1
+
+
+@pytest.mark.parametrize("k", PROMOTED_205)
+@pytest.mark.parametrize("mode", PROMOTING_MODES)
+def test_promotion_caps_the_slots_and_fills_to_exactly_k(promoting, mode, k):
+    retriever, _ = promoting(mode)
+
+    assert ids(retriever.retrieve(NAMED_205, k=k)) == PROMOTED_205[k]
+
+
+@pytest.mark.parametrize(("k", "queries"), [(1, 1), (2, 1), (3, 2), (10, 2)])
+def test_dense_mode_queries_again_only_when_a_slot_is_free(promoting, k, queries):
+    retriever, client = promoting("dense")
+
+    retriever.retrieve(NAMED_205, k=k)
+
+    assert len(client.queries()) == queries
+
+
+def test_dense_promotion_makes_one_filtered_query(promoting, fake_embedder):
+    retriever, client = promoting("dense")
+
+    retriever.retrieve(NAMED_92_AND_205, k=4)
+
+    vector = fake_embedder.embed_query(NAMED_92_AND_205).tolist()
+    plain = {"collection": "scripted", "query": vector, "limit": 4, "with_payload": True}
+    only_named = Filter(must=[FieldCondition(key="article", match=MatchAny(any=[92, 205]))])
+    assert client.calls == [
+        ("collection_exists", {"collection": "scripted"}),
+        ("query_points", plain),
+        (
+            "query_points",
+            plain
+            | {"limit": 2, "query_filter": only_named, "search_params": SearchParams(exact=True)},
+        ),
+    ]
+
+
+@pytest.mark.parametrize("sparse", [(), ((D205_K3, 9.0), (A[0], 5.0))])
+def test_hybrid_promotion_makes_no_extra_query(promoting, sparse):
+    plain, plain_client = promoting("hybrid", promote=False, sparse=sparse)
+    retriever, client = promoting("hybrid", sparse=sparse)
+
+    plain.retrieve(NAMED_205, k=5)
+    retriever.retrieve(NAMED_205, k=5)
+
+    assert client.calls == plain_client.calls
+
+
+def test_hybrid_takes_candidates_from_the_fused_ranking(promoting):
+    # BM25 lifts khoản 3, the last of the three in the dense ranking, to the top of the fusion.
+    retriever, _ = promoting("hybrid", sparse=[(D205_K3, 9.0)])
+
+    results = retriever.retrieve(NAMED_205, k=5)
+
+    assert ids(results) == [D205_K3, D205_K2, D205_K1, A[0], A[1]]
+
+
+def test_promoted_hybrid_chunks_keep_their_scores_and_ranks(promoting):
+    retriever, _ = promoting("hybrid", sparse=[(D205_K3, 9.0), (A[0], 5.0)])
+    original = {r.chunk.id: r for r in retriever.rank(NAMED_205, k=5).results}
+
+    results = retriever.retrieve(NAMED_205, k=5)
+
+    assert results == [original[chunk_id] for chunk_id in ids(results)]
+    # Khoản 3 is first now and still says where it stood in each branch.
+    assert summary(results)[0] == (
+        D205_K3,
+        dict(RANKED)[D205_K3],
+        137 / 4636,  # 1/(60 + 16) + 1/(60 + 1)
+        16,
+        1,
+    )
+
+
+def test_promoted_dense_chunks_carry_their_cosine_and_no_ranks(promoting):
+    retriever, _ = promoting("dense")
+
+    results = retriever.retrieve(NAMED_205, k=3)
+
+    cosines = dict(RANKED)
+    assert summary(results) == [
+        (chunk_id, cosines[chunk_id], None, None, None) for chunk_id in PROMOTED_205[3]
+    ]
+
+
+@pytest.mark.parametrize("mode", PROMOTING_MODES)
+def test_the_slots_are_shared_by_all_named_articles(promoting, mode):
+    retriever, _ = promoting(mode)
+
+    results = retriever.retrieve(NAMED_92_AND_205, k=5)
+
+    # The first three chunks of either article in the original order.
+    assert ids(results) == [D205_K2, D92_K1, D205_K1, A[0], A[1]]
+
+
+@pytest.mark.parametrize("mode", PROMOTING_MODES)
+def test_fewer_candidates_than_slots_are_all_promoted(promoting, mode):
+    retriever, _ = promoting(mode)
+
+    results = retriever.retrieve(NAMED_77, k=5)
+
+    assert ids(results) == [D77, A[0], D205_K2, A[1], A[2]]
+
+
+@pytest.mark.parametrize("question", UNNAMED_QUESTIONS)
+@pytest.mark.parametrize("mode", RETRIEVAL_MODES)
+def test_a_question_that_names_no_article_is_unchanged(promoting, mode, question):
+    sparse = [(D205_K3, 9.0), (A[0], 5.0)]
+    plain, plain_client = promoting(mode, promote=False, sparse=sparse)
+    retriever, client = promoting(mode, sparse=sparse)
+
+    assert retriever.retrieve(question, k=5) == plain.retrieve(question, k=5)
+    assert client.calls == plain_client.calls
+
+
+def test_sparse_mode_never_promotes(promoting):
+    sparse = [(A[0], 9.0), (A[1], 8.0), (A[2], 7.0), (D205_K1, 1.0)]
+    retriever, client = promoting("sparse", sparse=sparse)
+
+    results = retriever.retrieve(NAMED_205, k=3)
+
+    assert ids(results) == A[:3]
+    assert len(client.queries()) == 2
+    assert all("query_filter" not in arguments for arguments in client.queries())
+
+
+@pytest.mark.parametrize("mode", PROMOTING_MODES)
+def test_rank_is_never_promoted(promoting, mode):
+    plain, plain_client = promoting(mode, promote=False)
+    retriever, client = promoting(mode)
+
+    assert retriever.rank(NAMED_205, k=5) == plain.rank(NAMED_205, k=5)
+    assert client.calls == plain_client.calls
+
+
+def test_equal_promoted_cosines_are_ordered_by_chunk_id(promoting):
+    # The server lists khoản 3 before khoản 2.
+    retriever, _ = promoting("dense", dense=[(A[0], 0.9), (D205_K3, 0.5), (D205_K2, 0.5)])
+
+    assert ids(retriever.retrieve(NAMED_205, k=5)) == [D205_K2, D205_K3, A[0]]
+
+
+@pytest.mark.parametrize("mode", PROMOTING_MODES)
+def test_a_named_article_without_a_chunk_leaves_the_ranking(promoting, mode):
+    retriever, _ = promoting(mode)
+
+    assert ids(retriever.retrieve(NAMED_ABSENT, k=5)) == ORDER[:5]
+
+
+def test_a_failed_promotion_query_becomes_qdrant_unavailable(promoting, monkeypatch):
+    retriever, client = promoting("dense")
+    answer = client.query_points
+
+    def query_points(collection, **arguments):
+        if "query_filter" in arguments:
+            fail_transport()
+        return answer(collection, **arguments)
+
+    monkeypatch.setattr(client, "query_points", query_points)
+
+    with pytest.raises(QdrantUnavailableError):
+        retriever.retrieve(NAMED_205)
+
+
+def test_a_bad_payload_in_a_promotion_hit_is_reported(promoting):
+    retriever, client = promoting("dense")
+    # Below the top 5, so only the filtered query reads it.
+    client.payloads[D205_K1] = {"article": 205, "legacy_field": "PAYLOAD-MARKER"}
+
+    with pytest.raises(InvalidCollectionDataError, match="incompatible") as info:
+        retriever.retrieve(NAMED_205, k=5)
+
+    assert "uv run python -m ingestion.index" in str(info.value)
+    assert HYBRID_INDEX_COMMAND not in str(info.value)
+    assert "PAYLOAD-MARKER" not in str(info.value)
+
+
+@pytest.mark.filterwarnings("ignore:Local mode performs exact:UserWarning")
+@pytest.mark.parametrize("question", PROMOTION_QUESTIONS)
+@pytest.mark.parametrize("mode", PROMOTING_MODES)
+def test_promotion_works_on_a_local_qdrant(client, promotion_chunks, fake_embedder, mode, question):
+    """The real article filter: both modes promote from their own full ranking."""
+    vectors = fake_embedder.embed_documents([chunk.context_text for chunk in promotion_chunks])
+    index_hybrid_chunks(
+        promotion_chunks,
+        vectors,
+        client,
+        "hybrid",
+        model_name=fake_embedder.model_name,
+        chunks_sha256="0" * 64,
+    )
+    plain = Retriever(client, fake_embedder, "hybrid", mode=mode)
+    retriever = Retriever(client, fake_embedder, "hybrid", mode=mode, promote=True)
+    named = {NAMED_205: {205}, NAMED_92_AND_205: {92, 205}, NAMED_77: {77}}.get(question, set())
+    full = plain.retrieve(question, k=len(promotion_chunks))
+
+    results = retriever.retrieve(question, k=5)
+
+    first = [r.chunk.id for r in full if r.chunk.article in named][:3]
+    rest = [r.chunk.id for r in full[:5] if r.chunk.id not in first]
+    assert ids(results) == (first + rest)[:5]
+    cosines = {r.chunk.id: r.score for r in full}
+    for result in results:
+        assert result.score == pytest.approx(cosines[result.chunk.id])
+
+
+@pytest.mark.parametrize(
+    "modules",
+    [("app.rag.retriever", "app.rag.article_refs"), ("app.rag.article_refs", "app.rag.retriever")],
+)
+def test_the_parser_and_the_retriever_import_in_either_order(modules):
+    # A fresh interpreter: here both are already imported, which would hide an import cycle.
+    code = "\n".join(f"import {module}" for module in modules)
+
+    done = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+
+    assert done.returncode == 0, done.stderr

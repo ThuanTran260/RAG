@@ -2,6 +2,9 @@
 
 ``score`` is the dense cosine similarity in every mode. Sparse and hybrid modes need a hybrid
 collection and query it at full depth, so that every chunk has a cosine and a dense rank.
+
+With ``promote`` on, dense and hybrid modes move chunks of the articles the question names to the
+top of the results, so the results are then no longer sorted by ``score``.
 """
 
 import unicodedata
@@ -13,7 +16,14 @@ from typing import Literal, Protocol, get_args
 import numpy as np
 from pydantic import BaseModel, ValidationError
 from qdrant_client import QdrantClient
-from qdrant_client.models import ScoredPoint, SearchParams, SparseVector
+from qdrant_client.models import (
+    FieldCondition,
+    Filter,
+    MatchAny,
+    ScoredPoint,
+    SearchParams,
+    SparseVector,
+)
 
 from app.core.config import get_settings
 from app.rag.embedder import Embedder, build_embedder
@@ -31,6 +41,7 @@ from ingestion.models import Chunk
 
 RetrievalMode = Literal["dense", "sparse", "hybrid"]
 RETRIEVAL_MODES: tuple[RetrievalMode, ...] = get_args(RetrievalMode)
+MAX_PROMOTED = 3  # chunks moved up per question, across all the articles it names
 
 
 class InvalidQueryError(ValueError):
@@ -97,6 +108,8 @@ class Retriever:
         embedder: QueryEmbedder,
         collection: str,
         mode: RetrievalMode = "dense",
+        *,
+        promote: bool = False,
     ) -> None:
         if mode not in RETRIEVAL_MODES:
             raise ValueError(f"unknown retrieval mode: {mode!r}")
@@ -104,14 +117,37 @@ class Retriever:
         self.embedder = embedder
         self.collection = collection
         self.mode = mode
+        self.promote = promote  # ignored in sparse mode, which shows BM25 hits only
         # Named in error messages: sparse and hybrid modes need the hybrid build.
         self._index_command = INDEX_COMMAND if mode == "dense" else HYBRID_INDEX_COMMAND
 
     def retrieve(self, query: str, k: int = 5) -> list[RetrievedChunk]:
-        return self.rank(query, k).results[:k]
+        """The best ``k`` chunks; with ``promote`` on, those of the named articles come first.
+
+        At most max(0, min(3, k - 2)) chunks are promoted, taken in the order of the full
+        ranking. The top ``k`` of that ranking fills the other places.
+        """
+        ranking = self.rank(query, k)
+        top = ranking.results[:k]
+        slots = max(0, min(MAX_PROMOTED, k - 2))
+        if not self.promote or self.mode == "sparse" or slots == 0:
+            return top
+        # Imported here because of a cycle: article_refs imports generate, which imports prompts,
+        # which imports this module.
+        from app.rag.article_refs import article_refs
+
+        articles = article_refs(prepare_query(query, k))
+        if not articles:
+            return top
+        if self.mode == "dense":  # its ranking stops at k, so ask for the named articles
+            promoted = self._article_hits(ranking.dense_vector, articles, slots)
+        else:
+            promoted = [r for r in ranking.results if r.chunk.article in articles][:slots]
+        taken = {result.chunk.id for result in promoted}
+        return (promoted + [r for r in top if r.chunk.id not in taken])[:k]
 
     def rank(self, query: str, k: int = 5) -> Ranking:
-        """Search for ``query`` and return the ranking before it is cut to ``k``."""
+        """Search for ``query``; return the ranking before promotion and before the cut to ``k``."""
         query = prepare_query(query, k)
         full_depth = self.mode != "dense"
         # One boundary around every Qdrant call: only Qdrant failures are translated; embedding
@@ -153,6 +189,29 @@ class Retriever:
         return self.client.query_points(
             self.collection, query=vector, limit=limit, with_payload=True, **extra
         ).points
+
+    def _article_hits(
+        self, vector: list[float], articles: set[int], limit: int
+    ) -> list[RetrievedChunk]:
+        """The ``limit`` chunks of ``articles`` closest to the query vector."""
+        only_named = Filter(
+            must=[FieldCondition(key="article", match=MatchAny(any=sorted(articles)))]
+        )
+        with qdrant_errors():
+            hits = self.client.query_points(
+                self.collection,
+                query=vector,
+                query_filter=only_named,
+                limit=limit,
+                with_payload=True,
+                # Exact, so the order is that of the full ranking whatever the HNSW index does.
+                search_params=SearchParams(exact=True),
+            ).points
+        results = [
+            RetrievedChunk(chunk=self._to_chunk(hit.payload), score=hit.score) for hit in hits
+        ]
+        # Equal cosines among the hits are ordered by chunk id, as in the BM25 modes.
+        return sorted(results, key=lambda result: (-result.score, result.chunk.id))
 
     def _sparse_hits(self, query: str, depth: int) -> list[ScoredPoint]:
         """Every chunk with a positive BM25 score, ids and scores only."""
